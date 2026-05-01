@@ -240,34 +240,56 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Video Party P2P',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Playlist colaborativa com tracker hibrido, peers TCP e prefetch.',
-                style: TextStyle(color: Colors.white60),
-              ),
-            ],
-          ),
+        const Text(
+          'Video Party P2P',
+          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
         ),
-        _StatusChip(
-          icon: Icons.hub_rounded,
-          label: controller.trackerRunning ? 'Tracker ativo' : 'Tracker remoto',
-          active: controller.trackerRunning,
+        const SizedBox(height: 4),
+        const Text(
+          'Playlist colaborativa com tracker hibrido, peers TCP e prefetch.',
+          style: TextStyle(color: Colors.white60),
         ),
-        const SizedBox(width: 10),
-        _StatusChip(
-          icon: Icons.upload_rounded,
-          label: controller.peerServing ? 'Upload ativo' : 'Upload parado',
-          active: controller.peerServing,
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _StatusChip(
+              icon: Icons.hub_rounded,
+              label: controller.trackerRunning
+                  ? 'Tracker ativo'
+                  : 'Tracker remoto',
+              active: controller.trackerRunning,
+            ),
+            _StatusChip(
+              icon: Icons.upload_rounded,
+              label: controller.peerServing ? 'Upload ativo' : 'Upload parado',
+              active: controller.peerServing,
+            ),
+            const _StatusChip(
+              icon: Icons.dashboard_customize_rounded,
+              label: 'GUI ativa',
+              active: true,
+            ),
+            const _StatusChip(
+              icon: Icons.call_split_rounded,
+              label: 'Paralelo',
+              active: true,
+            ),
+            const _StatusChip(
+              icon: Icons.lock_rounded,
+              label: 'Cifrado',
+              active: true,
+            ),
+            const _StatusChip(
+              icon: Icons.route_rounded,
+              label: 'Relay NAT',
+              active: true,
+            ),
+          ],
         ),
       ],
     );
