@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'models.dart';
 
@@ -55,6 +56,10 @@ class TrackerServer {
           .first
           .timeout(const Duration(seconds: 10));
       final request = jsonDecode(line) as Map<String, Object?>;
+      if (request['type'] == 'RELAY_DOWNLOAD') {
+        await _relayDownload(request, socket);
+        return;
+      }
       final response = _dispatch(request);
       socket.write(encodeMessage(response));
     } on Object catch (error) {
@@ -79,6 +84,155 @@ class TrackerServer {
       default:
         return {'ok': false, 'error': 'Comando desconhecido'};
     }
+  }
+
+  Future<void> _relayDownload(
+    Map<String, Object?> request,
+    Socket client,
+  ) async {
+    final hash = request['hash'] as String? ?? '';
+    final video = _videos[hash];
+    if (video == null) {
+      client.write(
+        encodeMessage({'ok': false, 'error': 'Video nao registrado'}),
+      );
+      return;
+    }
+
+    final offset = (request['offset'] as num?)?.toInt() ?? 0;
+    if (offset < 0 || offset > video.size) {
+      client.write(encodeMessage({'ok': false, 'error': 'Offset invalido'}));
+      return;
+    }
+
+    final available = video.size - offset;
+    final length = min(
+      (request['length'] as num?)?.toInt() ?? available,
+      available,
+    );
+    final encrypted = request['encrypted'] == true;
+    final requesterId = request['requesterId'] as String? ?? '';
+    final owners = (_ownersByHash[hash] ?? const <String>{})
+        .map((id) => _peers[id])
+        .whereType<PeerInfo>()
+        .where((peer) => peer.id != requesterId)
+        .toList();
+
+    for (final owner in owners) {
+      try {
+        await _pipePeerThroughRelay(
+          owner: owner,
+          video: video,
+          offset: offset,
+          length: length,
+          encrypted: encrypted,
+          client: client,
+        );
+        onLog('Relay enviou "${video.name}" via ${owner.name}');
+        return;
+      } on Object catch (error) {
+        onLog('Relay falhou via ${owner.name}: $error');
+      }
+    }
+
+    client.write(
+      encodeMessage({
+        'ok': false,
+        'error': 'Nenhum owner alcancavel via relay',
+      }),
+    );
+  }
+
+  Future<void> _pipePeerThroughRelay({
+    required PeerInfo owner,
+    required VideoItem video,
+    required int offset,
+    required int length,
+    required bool encrypted,
+    required Socket client,
+  }) async {
+    final peerSocket = await Socket.connect(
+      owner.host,
+      owner.port,
+      timeout: const Duration(seconds: 8),
+    );
+    final completer = Completer<void>();
+    var headerParsed = false;
+    var headerBytes = <int>[];
+    var failed = false;
+
+    void completeWithError(Object error) {
+      failed = true;
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+      peerSocket.destroy();
+    }
+
+    peerSocket.write(
+      encodeMessage({
+        'type': 'GET_FILE',
+        'hash': video.hash,
+        'offset': offset,
+        'length': length,
+        'encrypted': encrypted,
+      }),
+    );
+    await peerSocket.flush();
+
+    peerSocket.listen(
+      (data) {
+        if (failed) {
+          return;
+        }
+        if (!headerParsed) {
+          final newline = data.indexOf(10);
+          if (newline == -1) {
+            headerBytes.addAll(data);
+            return;
+          }
+          headerBytes.addAll(data.sublist(0, newline));
+          final header =
+              jsonDecode(utf8.decode(headerBytes)) as Map<String, Object?>;
+          if (header['ok'] != true) {
+            completeWithError(
+              StateError(header['error'] as String? ?? 'Peer recusou relay'),
+            );
+            return;
+          }
+          headerParsed = true;
+          client.write(
+            encodeMessage({
+              'ok': true,
+              'name': video.name,
+              'size': video.size,
+              'offset': offset,
+              'length': length,
+              'encrypted': header['encrypted'] == true,
+              'relay': true,
+              'peerName': owner.name,
+              if (header['encrypted'] == true) 'cipher': transferCipherName,
+            }),
+          );
+          final body = data.sublist(newline + 1);
+          if (body.isNotEmpty) {
+            client.add(body);
+          }
+          return;
+        }
+        client.add(data);
+      },
+      onError: completeWithError,
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.complete();
+        }
+      },
+      cancelOnError: true,
+    );
+
+    await completer.future.timeout(const Duration(hours: 4));
+    await peerSocket.close();
   }
 
   Map<String, Object?> _register(Map<String, Object?> request) {

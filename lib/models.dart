@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 const videoExtensions = {'.mp4', '.mkv', '.webm', '.avi', '.mov', '.m4v'};
+const transferCipherName = 'xor-sha256-demo';
 
 class VideoItem {
   const VideoItem({

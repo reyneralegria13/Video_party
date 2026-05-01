@@ -10,6 +10,9 @@ import 'models.dart';
 typedef ProgressWriter = void Function(DownloadProgress progress);
 typedef LogWriter = void Function(String message);
 
+const _maxParallelDownloads = 4;
+const _simplePeerCipherKey = 'video-party-p2p-demo-key';
+
 class PeerNode {
   PeerNode({required this.onLog});
 
@@ -95,50 +98,216 @@ class PeerNode {
     );
   }
 
-  Future<File> downloadFromPeer({
-    required PeerInfo peer,
+  Future<File> downloadFromPeers({
+    required List<PeerInfo> peers,
     required VideoItem video,
     required Directory outputDirectory,
     required ProgressWriter onProgress,
   }) async {
+    if (peers.isEmpty) {
+      throw StateError('Nenhum peer remoto disponivel para download.');
+    }
     await outputDirectory.create(recursive: true);
-    final extension = _extensionOf(video.name);
-    final target = File(
-      '${outputDirectory.path}${Platform.pathSeparator}${safeFileName(video.name)}-$extension.part',
+    final finalFile = _targetFile(outputDirectory, video);
+    final ranges = _buildRanges(
+      totalBytes: video.size,
+      partCount: min(peers.length, _maxParallelDownloads),
     );
-    final finalFile = File(
-      '${outputDirectory.path}${Platform.pathSeparator}${safeFileName(video.name)}',
-    );
-    final socket = await Socket.connect(
-      peer.host,
-      peer.port,
-      timeout: const Duration(seconds: 8),
-    );
-    final sink = target.openWrite();
-    final completer = Completer<File>();
-    var headerParsed = false;
-    var headerBytes = <int>[];
-    var received = 0;
-    var total = video.size;
-    var failed = false;
+    final partFiles = [
+      for (var i = 0; i < ranges.length; i++) File('${finalFile.path}.part.$i'),
+    ];
+    final receivedByRange = List<int>.filled(ranges.length, 0);
 
-    socket.write(encodeMessage({'type': 'GET_FILE', 'hash': video.hash}));
+    await _deleteIfExists(finalFile);
+    for (final partFile in partFiles) {
+      await _deleteIfExists(partFile);
+    }
 
-    void writeBody(List<int> bytes) {
-      if (bytes.isEmpty) {
-        return;
-      }
-      received += bytes.length;
-      sink.add(bytes);
+    void reportProgress(int index, int bytes) {
+      receivedByRange[index] += bytes;
+      final received = receivedByRange.fold<int>(0, (total, item) {
+        return total + item;
+      });
       onProgress(
         DownloadProgress(
           hash: video.hash,
           title: video.name,
           receivedBytes: received,
-          totalBytes: total,
-          status: 'baixando',
+          totalBytes: video.size,
+          status: ranges.length == 1
+              ? 'baixando cifrado'
+              : 'baixando ${ranges.length} partes',
         ),
       );
+    }
+
+    onLog(
+      ranges.length == 1
+          ? 'Download cifrado iniciado de ${peers.first.name}'
+          : 'Download paralelo iniciado com ${ranges.length} peer(s)',
+    );
+
+    await Future.wait([
+      for (var i = 0; i < ranges.length; i++)
+        _downloadRange(
+          connect: () => Socket.connect(
+            peers[i % peers.length].host,
+            peers[i % peers.length].port,
+            timeout: const Duration(seconds: 8),
+          ),
+          request: {
+            'type': 'GET_FILE',
+            'hash': video.hash,
+            'offset': ranges[i].start,
+            'length': ranges[i].length,
+            'encrypted': true,
+          },
+          range: ranges[i],
+          partFile: partFiles[i],
+          onBytes: (bytes) => reportProgress(i, bytes),
+          sourceLabel: peers[i % peers.length].name,
+        ),
+    ]);
+
+    await _joinParts(partFiles, finalFile);
+    await _verifyDownloadedFile(finalFile, video);
+    _mergeLibrary([
+      VideoItem(
+        name: video.name,
+        hash: video.hash,
+        size: video.size,
+        localPath: finalFile.path,
+      ),
+    ]);
+    onProgress(
+      DownloadProgress(
+        hash: video.hash,
+        title: video.name,
+        receivedBytes: video.size,
+        totalBytes: video.size,
+        status: 'concluido',
+      ),
+    );
+    onLog('Download concluido e validado: ${video.name}');
+    return finalFile;
+  }
+
+  Future<File> downloadViaTrackerRelay({
+    required String trackerHost,
+    required int trackerPort,
+    required VideoItem video,
+    required Directory outputDirectory,
+    required ProgressWriter onProgress,
+  }) async {
+    await outputDirectory.create(recursive: true);
+    final finalFile = _targetFile(outputDirectory, video);
+    final partFile = File('${finalFile.path}.relay.part');
+    final range = _DownloadRange(start: 0, length: video.size);
+    var received = 0;
+
+    await _deleteIfExists(finalFile);
+    await _deleteIfExists(partFile);
+    onLog('Tentando relay NAT pelo tracker para ${video.name}');
+
+    await _downloadRange(
+      connect: () => Socket.connect(
+        trackerHost,
+        trackerPort,
+        timeout: const Duration(seconds: 8),
+      ),
+      request: {
+        'type': 'RELAY_DOWNLOAD',
+        'hash': video.hash,
+        'requesterId': id,
+        'offset': range.start,
+        'length': range.length,
+        'encrypted': true,
+      },
+      range: range,
+      partFile: partFile,
+      onBytes: (bytes) {
+        received += bytes;
+        onProgress(
+          DownloadProgress(
+            hash: video.hash,
+            title: video.name,
+            receivedBytes: received,
+            totalBytes: video.size,
+            status: 'relay cifrado',
+          ),
+        );
+      },
+      sourceLabel: 'tracker relay',
+    );
+
+    await partFile.rename(finalFile.path);
+    await _verifyDownloadedFile(finalFile, video);
+    _mergeLibrary([
+      VideoItem(
+        name: video.name,
+        hash: video.hash,
+        size: video.size,
+        localPath: finalFile.path,
+      ),
+    ]);
+    onProgress(
+      DownloadProgress(
+        hash: video.hash,
+        title: video.name,
+        receivedBytes: video.size,
+        totalBytes: video.size,
+        status: 'concluido',
+      ),
+    );
+    onLog('Relay concluido e validado: ${video.name}');
+    return finalFile;
+  }
+
+  Future<void> _downloadRange({
+    required Future<Socket> Function() connect,
+    required Map<String, Object?> request,
+    required _DownloadRange range,
+    required File partFile,
+    required void Function(int bytes) onBytes,
+    required String sourceLabel,
+  }) async {
+    final socket = await connect();
+    final sink = partFile.openWrite();
+    final completer = Completer<void>();
+    var headerParsed = false;
+    var headerBytes = <int>[];
+    var received = 0;
+    var failed = false;
+    var encrypted = false;
+
+    socket.write(encodeMessage(request));
+    await socket.flush();
+
+    void completeWithError(Object error) {
+      failed = true;
+      if (!completer.isCompleted) {
+        completer.completeError(error);
+      }
+      socket.destroy();
+    }
+
+    void writeBody(List<int> bytes) {
+      if (bytes.isEmpty) {
+        return;
+      }
+      final remaining = range.length - received;
+      if (remaining <= 0) {
+        return;
+      }
+      final body = bytes.length > remaining
+          ? bytes.sublist(0, remaining)
+          : bytes;
+      final decoded = encrypted
+          ? _xorCipher(body, absoluteOffset: range.start + received)
+          : body;
+      received += body.length;
+      sink.add(decoded);
+      onBytes(body.length);
     }
 
     socket.listen(
@@ -156,55 +325,36 @@ class PeerNode {
           final header =
               jsonDecode(utf8.decode(headerBytes)) as Map<String, Object?>;
           if (header['ok'] != true) {
-            failed = true;
-            completer.completeError(
+            completeWithError(
               StateError(
-                header['error'] as String? ?? 'Peer recusou o arquivo',
+                header['error'] as String? ?? '$sourceLabel recusou o arquivo',
               ),
             );
-            socket.destroy();
             return;
           }
-          total = (header['size'] as num?)?.toInt() ?? total;
+          encrypted = header['encrypted'] == true;
           headerParsed = true;
           writeBody(data.sublist(newline + 1));
           return;
         }
         writeBody(data);
       },
-      onError: (Object error) {
-        if (!completer.isCompleted) {
-          completer.completeError(error);
-        }
-      },
+      onError: completeWithError,
       onDone: () async {
         await sink.close();
         if (failed) {
           return;
         }
-        if (await finalFile.exists()) {
-          await finalFile.delete();
+        if (received != range.length) {
+          completeWithError(
+            StateError(
+              '$sourceLabel enviou $received de ${range.length} bytes',
+            ),
+          );
+          return;
         }
-        await target.rename(finalFile.path);
-        _mergeLibrary([
-          VideoItem(
-            name: video.name,
-            hash: video.hash,
-            size: total,
-            localPath: finalFile.path,
-          ),
-        ]);
-        onProgress(
-          DownloadProgress(
-            hash: video.hash,
-            title: video.name,
-            receivedBytes: total,
-            totalBytes: total,
-            status: 'concluido',
-          ),
-        );
         if (!completer.isCompleted) {
-          completer.complete(finalFile);
+          completer.complete();
         }
       },
       cancelOnError: true,
@@ -226,6 +376,9 @@ class PeerNode {
         return;
       }
       final hash = request['hash'] as String? ?? '';
+      final offset = (request['offset'] as num?)?.toInt() ?? 0;
+      final requestedLength = (request['length'] as num?)?.toInt();
+      final encrypted = request['encrypted'] == true;
       VideoItem? video;
       for (final item in _library) {
         if (item.hash == hash && item.isLocal) {
@@ -246,14 +399,41 @@ class PeerNode {
         );
         return;
       }
+      if (offset < 0 || offset > video.size) {
+        socket.write(encodeMessage({'ok': false, 'error': 'Offset invalido'}));
+        return;
+      }
+      final available = video.size - offset;
+      final length = min(requestedLength ?? available, available);
       socket.write(
-        encodeMessage({'ok': true, 'name': video.name, 'size': video.size}),
+        encodeMessage({
+          'ok': true,
+          'name': video.name,
+          'size': video.size,
+          'offset': offset,
+          'length': length,
+          'encrypted': encrypted,
+          if (encrypted) 'cipher': transferCipherName,
+        }),
       );
       await socket.flush();
-      await file.openRead().pipe(socket);
-      onLog('Upload concluido: ${video.name}');
+      var sent = 0;
+      await for (final chunk in file.openRead(offset, offset + length)) {
+        final payload = encrypted
+            ? _xorCipher(chunk, absoluteOffset: offset + sent)
+            : chunk;
+        socket.add(payload);
+        sent += chunk.length;
+      }
+      await socket.flush();
+      onLog(
+        encrypted
+            ? 'Upload cifrado concluido: ${video.name}'
+            : 'Upload concluido: ${video.name}',
+      );
     } on Object catch (error) {
       socket.write(encodeMessage({'ok': false, 'error': '$error'}));
+    } finally {
       await socket.flush();
       await socket.close();
     }
@@ -277,13 +457,76 @@ class PeerNode {
     return null;
   }
 
-  String _extensionOf(String name) {
-    final dot = name.lastIndexOf('.');
-    if (dot == -1) {
-      return 'video';
-    }
-    return name.substring(dot + 1);
+  File _targetFile(Directory outputDirectory, VideoItem video) {
+    final name = safeFileName(video.name);
+    return File(
+      '${outputDirectory.path}${Platform.pathSeparator}${name.isEmpty ? video.hash : name}',
+    );
   }
+
+  List<_DownloadRange> _buildRanges({
+    required int totalBytes,
+    required int partCount,
+  }) {
+    final safePartCount = max(
+      1,
+      min(partCount, totalBytes == 0 ? 1 : totalBytes),
+    );
+    final baseSize = totalBytes ~/ safePartCount;
+    final remainder = totalBytes % safePartCount;
+    final ranges = <_DownloadRange>[];
+    var cursor = 0;
+    for (var i = 0; i < safePartCount; i++) {
+      final length = baseSize + (i < remainder ? 1 : 0);
+      ranges.add(_DownloadRange(start: cursor, length: length));
+      cursor += length;
+    }
+    return ranges;
+  }
+
+  Future<void> _joinParts(List<File> partFiles, File finalFile) async {
+    final sink = finalFile.openWrite();
+    for (final partFile in partFiles) {
+      await sink.addStream(partFile.openRead());
+      await partFile.delete();
+    }
+    await sink.close();
+  }
+
+  Future<void> _verifyDownloadedFile(File file, VideoItem video) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    if (digest.toString() != video.hash) {
+      await _deleteIfExists(file);
+      throw StateError('Hash invalido apos download de ${video.name}');
+    }
+  }
+
+  Future<void> _deleteIfExists(File file) async {
+    if (await file.exists()) {
+      await file.delete();
+    }
+  }
+}
+
+class _DownloadRange {
+  const _DownloadRange({required this.start, required this.length});
+
+  final int start;
+  final int length;
+}
+
+List<int> _xorCipher(List<int> bytes, {required int absoluteOffset}) {
+  final output = List<int>.filled(bytes.length, 0);
+  for (var i = 0; i < bytes.length; i++) {
+    final position = absoluteOffset + i;
+    final block = position ~/ 32;
+    final blockOffset = position % 32;
+    final keyBytes = sha256
+        .convert(utf8.encode('$_simplePeerCipherKey:$block'))
+        .bytes;
+    output[i] = bytes[i] ^ keyBytes[blockOffset];
+  }
+  return output;
 }
 
 Future<Map<String, Object?>> requestTracker(

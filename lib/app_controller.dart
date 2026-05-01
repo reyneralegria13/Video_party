@@ -210,15 +210,29 @@ class AppController extends ChangeNotifier {
       status: reason,
     );
     notifyListeners();
-    await peer.downloadFromPeer(
-      peer: peers.first,
-      video: video,
-      outputDirectory: _downloadDirectory,
-      onProgress: (progress) {
-        downloads[entry.hash] = progress;
-        notifyListeners();
-      },
-    );
+    try {
+      await peer.downloadFromPeers(
+        peers: peers,
+        video: video,
+        outputDirectory: _downloadDirectory,
+        onProgress: (progress) {
+          downloads[entry.hash] = progress;
+          notifyListeners();
+        },
+      );
+    } on Object catch (error) {
+      _log('Download direto falhou: $error');
+      await peer.downloadViaTrackerRelay(
+        trackerHost: trackerHost.trim(),
+        trackerPort: trackerPort,
+        video: video,
+        outputDirectory: _downloadDirectory,
+        onProgress: (progress) {
+          downloads[entry.hash] = progress;
+          notifyListeners();
+        },
+      );
+    }
     await register();
   }
 
