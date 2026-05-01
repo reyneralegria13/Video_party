@@ -4,7 +4,9 @@ Aplicativo Flutter para a disciplina de Sistemas Distribuidos. Ele implementa um
 
 - Um tracker TCP guarda metadados, peers e a playlist global.
 - Cada cliente Flutter tambem atua como servidor de upload TCP.
-- Downloads acontecem diretamente entre peers, sem passar os bytes pelo tracker.
+- Downloads acontecem diretamente entre peers e podem ser divididos em partes paralelas.
+- O trafego de arquivo entre peers usa uma cifra simples `xor-sha256-demo` para fins didaticos.
+- Se o acesso direto falhar, o app tenta um relay de download pelo tracker.
 - Ao reproduzir um item da playlist, o app inicia prefetch do proximo video em segundo plano.
 
 ## Como rodar
@@ -74,19 +76,29 @@ Cada comando de controle e uma linha JSON terminada por `\n`.
 {"type": "DOWNLOAD", "hash": "sha256"}
 ```
 
-### Peer
+`RELAY_DOWNLOAD`
 
-O download direto usa `GET_FILE`. O peer responde primeiro com um cabecalho JSON e depois envia os bytes crus do arquivo no mesmo socket.
+Usado como fallback quando um peer nao consegue abrir conexao direta com outro. O tracker conecta em um owner alcancavel e repassa os bytes para o solicitante.
 
 ```json
-{"type": "GET_FILE", "hash": "sha256"}
+{"type": "RELAY_DOWNLOAD", "hash": "sha256", "requesterId": "peer-2", "offset": 0, "length": 1048576, "encrypted": true}
+```
+
+### Peer
+
+O download direto usa `GET_FILE`. O peer responde primeiro com um cabecalho JSON e depois envia os bytes do intervalo pedido no mesmo socket.
+
+```json
+{"type": "GET_FILE", "hash": "sha256", "offset": 0, "length": 1048576, "encrypted": true}
 ```
 
 Resposta:
 
 ```json
-{"ok": true, "name": "show.mp4", "size": 104857600}
+{"ok": true, "name": "show.mp4", "size": 104857600, "offset": 0, "length": 1048576, "encrypted": true, "cipher": "xor-sha256-demo"}
 ```
+
+O cliente divide o arquivo em ate quatro partes, baixa de peers diferentes quando disponiveis, remonta o arquivo localmente e valida o SHA-256 final antes de registrar o novo owner no tracker.
 
 ## Validacao
 
