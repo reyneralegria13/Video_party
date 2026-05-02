@@ -63,8 +63,22 @@ class PartyHomePage extends StatefulWidget {
   State<PartyHomePage> createState() => _PartyHomePageState();
 }
 
+enum _SidebarSection { home, playlist, downloads, settings }
+
 class _PartyHomePageState extends State<PartyHomePage> {
   AppController get controller => widget.controller;
+
+  _SidebarSection _selectedSection = _SidebarSection.home;
+
+  final ScrollController _mainScrollController = ScrollController();
+  final ScrollController _rightPanelScrollController = ScrollController();
+  final GlobalKey _homeKey = GlobalKey();
+  final GlobalKey _controlKey = GlobalKey();
+  final GlobalKey _playerKey = GlobalKey();
+  final GlobalKey _libraryKey = GlobalKey();
+  final GlobalKey _playlistKey = GlobalKey();
+  final GlobalKey _peersKey = GlobalKey();
+  final GlobalKey _eventsKey = GlobalKey();
 
   late final TextEditingController peerName;
   late final TextEditingController trackerHost;
@@ -87,6 +101,8 @@ class _PartyHomePageState extends State<PartyHomePage> {
 
   @override
   void dispose() {
+    _mainScrollController.dispose();
+    _rightPanelScrollController.dispose();
     peerName.dispose();
     trackerHost.dispose();
     trackerPort.dispose();
@@ -110,9 +126,27 @@ class _PartyHomePageState extends State<PartyHomePage> {
                     ? Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          const _SideBar(),
+                          _SideBar(
+                            controller: controller,
+                            selectedSection: _selectedSection,
+                            onHome: () =>
+                                _navigateTo(_SidebarSection.home, _homeKey),
+                            onPlaylist: () => _navigateTo(
+                              _SidebarSection.playlist,
+                              _playlistKey,
+                            ),
+                            onDownloads: () => _navigateTo(
+                              _SidebarSection.downloads,
+                              _playerKey,
+                            ),
+                            onSettings: () => _navigateTo(
+                              _SidebarSection.settings,
+                              _controlKey,
+                            ),
+                          ),
                           Expanded(
                             child: _MainArea(
+                              scrollController: _mainScrollController,
                               controller: controller,
                               peerName: peerName,
                               trackerHost: trackerHost,
@@ -120,20 +154,31 @@ class _PartyHomePageState extends State<PartyHomePage> {
                               advertisedHost: advertisedHost,
                               uploadPort: uploadPort,
                               folderPath: folderPath,
+                              homeKey: _homeKey,
+                              controlKey: _controlKey,
+                              playerKey: _playerKey,
+                              libraryKey: _libraryKey,
                             ),
                           ),
                           SizedBox(
                             width: 360,
-                            child: _RightPanel(controller: controller),
+                            child: _RightPanel(
+                              controller: controller,
+                              scrollController: _rightPanelScrollController,
+                              playlistKey: _playlistKey,
+                              peersKey: _peersKey,
+                              eventsKey: _eventsKey,
+                            ),
                           ),
                         ],
                       )
                     : ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
-                          _Header(controller: controller),
+                          _Header(key: _homeKey, controller: controller),
                           const SizedBox(height: 16),
                           _ControlPanel(
+                            key: _controlKey,
                             controller: controller,
                             peerName: peerName,
                             trackerHost: trackerHost,
@@ -143,11 +188,16 @@ class _PartyHomePageState extends State<PartyHomePage> {
                             folderPath: folderPath,
                           ),
                           const SizedBox(height: 16),
-                          _NowPlaying(controller: controller),
+                          _NowPlaying(key: _playerKey, controller: controller),
                           const SizedBox(height: 16),
-                          _Library(controller: controller),
+                          _Library(key: _libraryKey, controller: controller),
                           const SizedBox(height: 16),
-                          _RightPanel(controller: controller),
+                          _RightPanel(
+                            controller: controller,
+                            playlistKey: _playlistKey,
+                            peersKey: _peersKey,
+                            eventsKey: _eventsKey,
+                          ),
                         ],
                       );
                 return wide
@@ -159,6 +209,26 @@ class _PartyHomePageState extends State<PartyHomePage> {
         );
       },
     );
+  }
+
+  void _scrollTo(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 360),
+      curve: Curves.easeOutCubic,
+      alignment: 0.04,
+    );
+  }
+
+  void _navigateTo(_SidebarSection section, GlobalKey key) {
+    setState(() {
+      _selectedSection = section;
+    });
+    _scrollTo(key);
   }
 }
 
@@ -238,7 +308,21 @@ extension PartyPalette on BuildContext {
 }
 
 class _SideBar extends StatelessWidget {
-  const _SideBar();
+  const _SideBar({
+    required this.controller,
+    required this.selectedSection,
+    required this.onHome,
+    required this.onPlaylist,
+    required this.onDownloads,
+    required this.onSettings,
+  });
+
+  final AppController controller;
+  final _SidebarSection selectedSection;
+  final VoidCallback onHome;
+  final VoidCallback onPlaylist;
+  final VoidCallback onDownloads;
+  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -254,10 +338,33 @@ class _SideBar extends StatelessWidget {
             size: 34,
           ),
           const SizedBox(height: 28),
-          const _NavIcon(icon: Icons.home_rounded, selected: true),
-          const _NavIcon(icon: Icons.queue_music_rounded),
-          const _NavIcon(icon: Icons.cloud_download_rounded),
-          const _NavIcon(icon: Icons.settings_rounded),
+          _NavIcon(
+            icon: Icons.home_rounded,
+            tooltip: 'Inicio',
+            selected: selectedSection == _SidebarSection.home,
+            onPressed: onHome,
+          ),
+          _NavIcon(
+            icon: Icons.queue_music_rounded,
+            tooltip: 'Playlist',
+            selected: selectedSection == _SidebarSection.playlist,
+            onPressed: onPlaylist,
+          ),
+          _NavIcon(
+            icon: Icons.cloud_download_rounded,
+            tooltip: 'Player e downloads',
+            selected: selectedSection == _SidebarSection.downloads,
+            onPressed: onDownloads,
+          ),
+          _NavIcon(
+            icon: Icons.settings_rounded,
+            tooltip: 'Configuracoes',
+            selected: selectedSection == _SidebarSection.settings,
+            onPressed: onSettings,
+          ),
+          const Spacer(),
+          _ThemeMenu(controller: controller),
+          const SizedBox(height: 14),
         ],
       ),
     );
@@ -265,9 +372,16 @@ class _SideBar extends StatelessWidget {
 }
 
 class _NavIcon extends StatelessWidget {
-  const _NavIcon({required this.icon, this.selected = false});
+  const _NavIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.selected = false,
+  });
 
   final IconData icon;
+  final String tooltip;
+  final VoidCallback onPressed;
   final bool selected;
 
   @override
@@ -275,8 +389,8 @@ class _NavIcon extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: IconButton(
-        tooltip: '',
-        onPressed: () {},
+        tooltip: tooltip,
+        onPressed: onPressed,
         style: IconButton.styleFrom(
           backgroundColor: selected ? context.navSelected : Colors.transparent,
           fixedSize: const Size(48, 48),
@@ -292,6 +406,7 @@ class _NavIcon extends StatelessWidget {
 
 class _MainArea extends StatelessWidget {
   const _MainArea({
+    required this.scrollController,
     required this.controller,
     required this.peerName,
     required this.trackerHost,
@@ -299,8 +414,13 @@ class _MainArea extends StatelessWidget {
     required this.advertisedHost,
     required this.uploadPort,
     required this.folderPath,
+    required this.homeKey,
+    required this.controlKey,
+    required this.playerKey,
+    required this.libraryKey,
   });
 
+  final ScrollController scrollController;
   final AppController controller;
   final TextEditingController peerName;
   final TextEditingController trackerHost;
@@ -308,15 +428,21 @@ class _MainArea extends StatelessWidget {
   final TextEditingController advertisedHost;
   final TextEditingController uploadPort;
   final TextEditingController folderPath;
+  final GlobalKey homeKey;
+  final GlobalKey controlKey;
+  final GlobalKey playerKey;
+  final GlobalKey libraryKey;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
+      controller: scrollController,
       padding: const EdgeInsets.all(22),
       children: [
-        _Header(controller: controller),
+        _Header(key: homeKey, controller: controller),
         const SizedBox(height: 16),
         _ControlPanel(
+          key: controlKey,
           controller: controller,
           peerName: peerName,
           trackerHost: trackerHost,
@@ -326,16 +452,16 @@ class _MainArea extends StatelessWidget {
           folderPath: folderPath,
         ),
         const SizedBox(height: 18),
-        _NowPlaying(controller: controller),
+        _NowPlaying(key: playerKey, controller: controller),
         const SizedBox(height: 18),
-        _Library(controller: controller),
+        _Library(key: libraryKey, controller: controller),
       ],
     );
   }
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.controller});
+  const _Header({required this.controller, super.key});
 
   final AppController controller;
 
@@ -443,6 +569,7 @@ class _ControlPanel extends StatelessWidget {
     required this.advertisedHost,
     required this.uploadPort,
     required this.folderPath,
+    super.key,
   });
 
   final AppController controller;
@@ -487,11 +614,6 @@ class _ControlPanel extends StatelessWidget {
                 width: 280,
               ),
             ],
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: _ThemeSelector(controller: controller),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -578,45 +700,61 @@ class _Field extends StatelessWidget {
   }
 }
 
-class _ThemeSelector extends StatelessWidget {
-  const _ThemeSelector({required this.controller});
+class _ThemeMenu extends StatelessWidget {
+  const _ThemeMenu({required this.controller});
 
   final AppController controller;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SegmentedButton<AppVisualTheme>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(
-            value: AppVisualTheme.standard,
-            icon: Icon(Icons.dark_mode_rounded),
-            label: Text('Padrao'),
+    final icon = switch (controller.visualTheme) {
+      AppVisualTheme.standard => Icons.dark_mode_rounded,
+      AppVisualTheme.light => Icons.light_mode_rounded,
+      AppVisualTheme.system => Icons.brightness_auto_rounded,
+    };
+    return PopupMenuButton<AppVisualTheme>(
+      tooltip: 'Tema',
+      initialValue: controller.visualTheme,
+      onSelected: controller.updateVisualTheme,
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: AppVisualTheme.standard,
+          child: ListTile(
+            leading: Icon(Icons.dark_mode_rounded),
+            title: Text('Padrao'),
           ),
-          ButtonSegment(
-            value: AppVisualTheme.light,
-            icon: Icon(Icons.light_mode_rounded),
-            label: Text('Branco'),
+        ),
+        PopupMenuItem(
+          value: AppVisualTheme.light,
+          child: ListTile(
+            leading: Icon(Icons.light_mode_rounded),
+            title: Text('Branco'),
           ),
-          ButtonSegment(
-            value: AppVisualTheme.system,
-            icon: Icon(Icons.brightness_auto_rounded),
-            label: Text('Sistema'),
+        ),
+        PopupMenuItem(
+          value: AppVisualTheme.system,
+          child: ListTile(
+            leading: Icon(Icons.brightness_auto_rounded),
+            title: Text('Sistema'),
           ),
-        ],
-        selected: {controller.visualTheme},
-        onSelectionChanged: (selection) {
-          controller.updateVisualTheme(selection.single);
-        },
+        ),
+      ],
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: context.statusInactiveBackground,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: context.borderColor),
+        ),
+        child: Icon(icon, color: context.primaryAccent),
       ),
     );
   }
 }
 
 class _NowPlaying extends StatelessWidget {
-  const _NowPlaying({required this.controller});
+  const _NowPlaying({required this.controller, super.key});
 
   final AppController controller;
 
@@ -784,7 +922,7 @@ class _PlayerBackdropPainter extends CustomPainter {
 }
 
 class _Library extends StatelessWidget {
-  const _Library({required this.controller});
+  const _Library({required this.controller, super.key});
 
   final AppController controller;
 
@@ -920,9 +1058,19 @@ class _VideoTile extends StatelessWidget {
 }
 
 class _RightPanel extends StatelessWidget {
-  const _RightPanel({required this.controller});
+  const _RightPanel({
+    required this.controller,
+    this.scrollController,
+    this.playlistKey,
+    this.peersKey,
+    this.eventsKey,
+  });
 
   final AppController controller;
+  final ScrollController? scrollController;
+  final GlobalKey? playlistKey;
+  final GlobalKey? peersKey;
+  final GlobalKey? eventsKey;
 
   @override
   Widget build(BuildContext context) {
@@ -930,8 +1078,10 @@ class _RightPanel extends StatelessWidget {
       color: context.panelBackground,
       padding: const EdgeInsets.all(16),
       child: ListView(
+        controller: scrollController,
         children: [
           _PanelTitle(
+            key: playlistKey,
             icon: Icons.queue_music_rounded,
             title: 'Playlist global',
           ),
@@ -957,7 +1107,11 @@ class _RightPanel extends StatelessWidget {
               );
             }),
           const SizedBox(height: 18),
-          _PanelTitle(icon: Icons.group_rounded, title: 'Peers conectados'),
+          _PanelTitle(
+            key: peersKey,
+            icon: Icons.group_rounded,
+            title: 'Peers conectados',
+          ),
           const SizedBox(height: 10),
           ...controller.snapshot.peers.map(
             (peer) => ListTile(
@@ -975,7 +1129,11 @@ class _RightPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          _PanelTitle(icon: Icons.terminal_rounded, title: 'Eventos'),
+          _PanelTitle(
+            key: eventsKey,
+            icon: Icons.terminal_rounded,
+            title: 'Eventos',
+          ),
           const SizedBox(height: 10),
           ...controller.logs
               .take(14)
@@ -995,7 +1153,7 @@ class _RightPanel extends StatelessWidget {
 }
 
 class _PanelTitle extends StatelessWidget {
-  const _PanelTitle({required this.icon, required this.title});
+  const _PanelTitle({required this.icon, required this.title, super.key});
 
   final IconData icon;
   final String title;
