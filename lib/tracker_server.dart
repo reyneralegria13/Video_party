@@ -78,7 +78,7 @@ class TrackerServer {
         return {'ok': true, 'snapshot': snapshotJson()};
       case 'LOOKUP':
       case 'DOWNLOAD':
-        return _lookup(request['hash'] as String? ?? '');
+        return _lookup(request);
       case 'ADD_PLAYLIST':
         return _addPlaylist(request);
       default:
@@ -269,7 +269,24 @@ class TrackerServer {
     return {'ok': true, 'snapshot': snapshotJson()};
   }
 
-  Map<String, Object?> _lookup(String hash) {
+  Map<String, Object?> _lookup(Map<String, Object?> request) {
+    final hash = request['hash'] as String? ?? '';
+    if (hash.isNotEmpty) {
+      return _lookupHash(hash);
+    }
+
+    final name = request['name'] as String? ?? '';
+    if (name.isNotEmpty) {
+      return _lookupName(name);
+    }
+
+    return {
+      'ok': false,
+      'error': 'Informe hash ou name para consultar o recurso',
+    };
+  }
+
+  Map<String, Object?> _lookupHash(String hash) {
     final owners = _ownersByHash[hash] ?? const <String>{};
     final peers = owners.map((id) => _peers[id]).whereType<PeerInfo>().toList();
     return {
@@ -277,6 +294,21 @@ class TrackerServer {
       'video': _videos[hash]?.toJson(),
       'peers': peers.map((peer) => peer.toJson()).toList(),
     };
+  }
+
+  Map<String, Object?> _lookupName(String name) {
+    final query = name.trim().toLowerCase();
+    VideoItem? match;
+    for (final video in _videos.values) {
+      if (video.name.toLowerCase() == query) {
+        match = video;
+        break;
+      }
+    }
+    if (match == null) {
+      return {'ok': false, 'error': 'Recurso "$name" nao encontrado'};
+    }
+    return _lookupHash(match.hash);
   }
 
   Map<String, Object?> _addPlaylist(Map<String, Object?> request) {

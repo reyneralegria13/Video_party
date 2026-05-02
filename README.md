@@ -82,10 +82,24 @@ Cada comando de controle e uma linha JSON terminada por `\n`.
 {"type": "ADD_PLAYLIST", "hash": "sha256", "title": "show.mp4", "peerName": "DJ Video"}
 ```
 
-`DOWNLOAD` ou `LOOKUP`
+`DOWNLOAD` ou `LOOKUP` por hash
 
 ```json
 {"type": "DOWNLOAD", "hash": "sha256"}
+```
+
+`LOOKUP` por nome
+
+Compatibilidade com o formato textual do trabalho (`LOOKUP <nome>`), usando JSON/TCP:
+
+```json
+{"type": "LOOKUP", "name": "show.mp4"}
+```
+
+Resposta:
+
+```json
+{"ok": true, "video": {"name": "show.mp4", "hash": "sha256", "size": 104857600}, "peers": [{"id": "peer-1", "name": "DJ Video", "host": "100.x.x.x", "port": 5051}]}
 ```
 
 `RELAY_DOWNLOAD`

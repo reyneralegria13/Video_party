@@ -82,6 +82,14 @@ void main() {
         advertisedHost: '127.0.0.1',
         advertisedPort: ownerPort,
       );
+      final lookup = await requestTracker('127.0.0.1', trackerPort, {
+        'type': 'LOOKUP',
+        'name': 'relay.mp4',
+      });
+
+      expect(lookup['ok'], isTrue);
+      expect((lookup['video'] as Map)['name'], 'relay.mp4');
+      expect((lookup['peers'] as List), hasLength(1));
 
       final downloaded = await downloader.downloadViaTrackerRelay(
         trackerHost: '127.0.0.1',
