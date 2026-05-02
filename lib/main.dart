@@ -241,7 +241,9 @@ ThemeData _buildTheme(Brightness brightness) {
   return ThemeData(
     brightness: brightness,
     colorScheme: scheme,
-    scaffoldBackgroundColor: dark ? const Color(0xff101114) : Colors.white,
+    scaffoldBackgroundColor: dark
+        ? const Color(0xff101114)
+        : const Color(0xfff6f9fb),
     useMaterial3: true,
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -265,46 +267,49 @@ extension PartyPalette on BuildContext {
   bool get isPartyDark => Theme.of(this).brightness == Brightness.dark;
 
   Color get appBackground =>
-      isPartyDark ? const Color(0xff101114) : Colors.white;
+      isPartyDark ? const Color(0xff101114) : const Color(0xfff6f9fb);
   Color get sidebarBackground =>
-      isPartyDark ? const Color(0xff181a1f) : const Color(0xffeef4f5);
+      isPartyDark ? const Color(0xff181a1f) : const Color(0xffe8f1f4);
   Color get panelBackground =>
-      isPartyDark ? const Color(0xff15171b) : const Color(0xfff4f8f9);
+      isPartyDark ? const Color(0xff15171b) : const Color(0xffedf4f7);
   Color get cardBackground =>
-      isPartyDark ? const Color(0xff181a1f) : Colors.white;
+      isPartyDark ? const Color(0xff181a1f) : const Color(0xffffffff);
   Color get raisedBackground =>
-      isPartyDark ? const Color(0xff1b1d22) : const Color(0xfff8fbfc);
+      isPartyDark ? const Color(0xff1b1d22) : const Color(0xffffffff);
   Color get fieldBackground =>
-      isPartyDark ? const Color(0xff101114) : const Color(0xfff2f6f7);
+      isPartyDark ? const Color(0xff101114) : const Color(0xfff7fafb);
   Color get mediaBackground =>
-      isPartyDark ? const Color(0xff090a0c) : const Color(0xffeaf1f3);
+      isPartyDark ? const Color(0xff090a0c) : const Color(0xffdce8ed);
   Color get mediaStripe =>
-      isPartyDark ? const Color(0xff15181c) : const Color(0xffd5e1e5);
+      isPartyDark ? const Color(0xff15181c) : const Color(0xffc5d4da);
   Color get tileBackground =>
-      isPartyDark ? const Color(0xff24272e) : const Color(0xffe9f0f2);
+      isPartyDark ? const Color(0xff24272e) : const Color(0xffeef5f7);
   Color get rowBackground =>
-      isPartyDark ? const Color(0xff1c1f24) : Colors.white;
+      isPartyDark ? const Color(0xff1c1f24) : const Color(0xffffffff);
   Color get selectedRowBackground =>
-      isPartyDark ? const Color(0xff20342f) : const Color(0xffdef8f1);
+      isPartyDark ? const Color(0xff20342f) : const Color(0xffd9f5ee);
   Color get borderColor =>
-      isPartyDark ? Colors.white10 : const Color(0xffd9e4e7);
+      isPartyDark ? Colors.white10 : const Color(0xffd5e1e6);
   Color get borderStrongColor =>
-      isPartyDark ? Colors.white12 : const Color(0xffcbd9dd);
-  Color get primaryAccent => const Color(0xff00c2a8);
+      isPartyDark ? Colors.white12 : const Color(0xffb9cbd2);
+  Color get primaryAccent =>
+      isPartyDark ? const Color(0xff00c2a8) : const Color(0xff008f7d);
   Color get primaryAccentSoft =>
-      isPartyDark ? const Color(0xff38e8c6) : const Color(0xff007f71);
-  Color get warningAccent => const Color(0xffffbd59);
-  Color get secondaryAccent => const Color(0xff00a3ff);
-  Color get textMuted => isPartyDark ? Colors.white60 : const Color(0xff5a6670);
+      isPartyDark ? const Color(0xff38e8c6) : const Color(0xff00776a);
+  Color get warningAccent =>
+      isPartyDark ? const Color(0xffffbd59) : const Color(0xffb86f00);
+  Color get secondaryAccent =>
+      isPartyDark ? const Color(0xff00a3ff) : const Color(0xff0877bd);
+  Color get textMuted => isPartyDark ? Colors.white60 : const Color(0xff4e5c66);
   Color get textSubtle =>
-      isPartyDark ? Colors.white54 : const Color(0xff66737d);
-  Color get textFaint => isPartyDark ? Colors.white38 : const Color(0xff87939b);
+      isPartyDark ? Colors.white54 : const Color(0xff6f7d86);
+  Color get textFaint => isPartyDark ? Colors.white38 : const Color(0xff9aa8af);
   Color get navSelected =>
-      isPartyDark ? const Color(0xff25322f) : const Color(0xffdff8f2);
+      isPartyDark ? const Color(0xff25322f) : const Color(0xffccefe7);
   Color get statusActiveBackground =>
-      isPartyDark ? const Color(0xff183a32) : const Color(0xffdff8f2);
+      isPartyDark ? const Color(0xff183a32) : const Color(0xffd8f4ed);
   Color get statusInactiveBackground =>
-      isPartyDark ? const Color(0xff25272d) : const Color(0xffeef3f5);
+      isPartyDark ? const Color(0xff25272d) : const Color(0xfff5f8fa);
 }
 
 class _SideBar extends StatelessWidget {
@@ -805,11 +810,11 @@ class _NowPlaying extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const Center(
+                    Center(
                       child: Icon(
                         Icons.play_circle_fill_rounded,
                         size: 76,
-                        color: Color(0xff00c2a8),
+                        color: context.primaryAccent,
                       ),
                     ),
                   ],
@@ -1117,9 +1122,9 @@ class _RightPanel extends StatelessWidget {
             (peer) => ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(
+              leading: Icon(
                 Icons.computer_rounded,
-                color: Color(0xff00c2a8),
+                color: context.primaryAccent,
               ),
               title: Text(peer.name, overflow: TextOverflow.ellipsis),
               subtitle: Text(
