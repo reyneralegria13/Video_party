@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import 'models.dart';
 import 'peer_node.dart';
@@ -20,7 +22,13 @@ class AppController extends ChangeNotifier {
   }
 
   final PeerNode peer;
+  Player? _player;
+  VideoController? videoController;
   late final Directory _downloadDirectory;
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<Duration>? _durationSubscription;
+  StreamSubscription<bool>? _playingSubscription;
+  StreamSubscription<bool>? _completedSubscription;
 
   TrackerServer? tracker;
   TrackerSnapshot snapshot = TrackerSnapshot.empty();
@@ -39,8 +47,7 @@ class AppController extends ChangeNotifier {
   int nowPlayingIndex = -1;
   bool isPlaying = false;
   int playbackSeconds = 0;
-  int playbackDuration = 60;
-  Timer? _playbackTimer;
+  int playbackDuration = 1;
 
   bool get trackerRunning => tracker?.isRunning ?? false;
   bool get peerServing => peer.isServing;
@@ -127,19 +134,13 @@ class AppController extends ChangeNotifier {
       await ensureDownloaded(entry, reason: 'download');
     }
 
-    isPlaying = true;
-    _playbackTimer?.cancel();
-    _playbackTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!isPlaying) {
-        return;
-      }
-      playbackSeconds++;
-      if (playbackSeconds >= playbackDuration) {
-        playEntry(nowPlayingIndex + 1);
-        return;
-      }
-      notifyListeners();
-    });
+    final localPath = peer.localPathFor(entry.hash);
+    if (localPath == null) {
+      throw StateError('Arquivo local indisponivel para reproducao.');
+    }
+
+    final player = _ensurePlayer();
+    await player.open(Media(Uri.file(localPath).toString()), play: true);
     _log('Reproduzindo: ${entry.title}');
     notifyListeners();
     unawaited(prefetchNext());
@@ -152,8 +153,11 @@ class AppController extends ChangeNotifier {
       }
       return;
     }
-    isPlaying = !isPlaying;
-    notifyListeners();
+    if (isPlaying) {
+      unawaited(_player?.pause());
+    } else {
+      unawaited(_player?.play());
+    }
   }
 
   Future<void> prefetchNext() async {
@@ -283,6 +287,37 @@ class AppController extends ChangeNotifier {
     return (45 + (video.size / (1024 * 1024)).clamp(0, 180)).round();
   }
 
+  Player _ensurePlayer() {
+    final existing = _player;
+    if (existing != null) {
+      return existing;
+    }
+
+    MediaKit.ensureInitialized();
+    final player = Player();
+    _player = player;
+    videoController = VideoController(player);
+    _positionSubscription = player.stream.position.listen((position) {
+      playbackSeconds = position.inSeconds;
+      notifyListeners();
+    });
+    _durationSubscription = player.stream.duration.listen((duration) {
+      playbackDuration = duration.inSeconds == 0 ? 1 : duration.inSeconds;
+      notifyListeners();
+    });
+    _playingSubscription = player.stream.playing.listen((playing) {
+      isPlaying = playing;
+      notifyListeners();
+    });
+    _completedSubscription = player.stream.completed.listen((completed) {
+      if (completed) {
+        unawaited(playEntry(nowPlayingIndex + 1));
+      }
+    });
+    notifyListeners();
+    return player;
+  }
+
   static String _defaultDownloadPath() {
     final home =
         Platform.environment['USERPROFILE'] ??
@@ -293,7 +328,11 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _playbackTimer?.cancel();
+    unawaited(_positionSubscription?.cancel());
+    unawaited(_durationSubscription?.cancel());
+    unawaited(_playingSubscription?.cancel());
+    unawaited(_completedSubscription?.cancel());
+    unawaited(_player?.dispose());
     unawaited(peer.stopUploadServer());
     unawaited(tracker?.stop());
     super.dispose();

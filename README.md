@@ -7,7 +7,7 @@ Aplicativo Flutter para a disciplina de Sistemas Distribuidos. Ele implementa um
 - Downloads acontecem diretamente entre peers e podem ser divididos em partes paralelas.
 - O trafego de arquivo entre peers usa uma cifra simples `xor-sha256-demo` para fins didaticos.
 - Se o acesso direto falhar, o app tenta um relay de download pelo tracker.
-- Ao reproduzir um item da playlist, o app inicia prefetch do proximo video em segundo plano.
+- Ao reproduzir um item da playlist, o app toca o arquivo local com `media_kit` e inicia prefetch do proximo video em segundo plano.
 
 ## Como rodar
 
@@ -16,6 +16,12 @@ Use desktop, pois o projeto usa `dart:io` para sockets TCP e arquivos locais.
 ```bash
 flutter pub get
 flutter run -d windows
+```
+
+No Windows, habilite o Modo Desenvolvedor se o Flutter pedir suporte a symlinks para plugins nativos:
+
+```powershell
+start ms-settings:developers
 ```
 
 No Linux:
@@ -39,6 +45,7 @@ flutter run -d linux
 6. Na maquina B, clique em **Ativar upload**, **Escanear e registrar** e **Atualizar rede**.
 7. Qualquer peer pode adicionar videos ao **Catalogo global** para montar a **Playlist global**.
 8. Ao tocar um video, o app baixa o atual se necessario e faz prefetch do proximo item.
+9. Depois do download, o player embutido reproduz o arquivo local na area principal.
 
 Os arquivos baixados ficam em `VideoPartyDownloads` dentro da pasta do usuario.
 

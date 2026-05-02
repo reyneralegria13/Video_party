@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import 'app_controller.dart';
 import 'models.dart';
 
 void main() {
+  MediaKit.ensureInitialized();
   runApp(const VideoPartyApp());
 }
 
@@ -478,6 +481,7 @@ class _NowPlaying extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entry = controller.nowPlaying;
+    final videoController = controller.videoController;
     final progress = controller.playbackDuration == 0
         ? 0.0
         : (controller.playbackSeconds / controller.playbackDuration).clamp(
@@ -505,18 +509,25 @@ class _NowPlaying extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  Positioned.fill(
-                    child: CustomPaint(painter: _PlayerBackdropPainter()),
-                  ),
-                  Center(
-                    child: Icon(
-                      controller.isPlaying
-                          ? Icons.pause_circle_filled_rounded
-                          : Icons.play_circle_fill_rounded,
-                      size: 76,
-                      color: const Color(0xff00c2a8),
+                  if (videoController != null)
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Video(controller: videoController),
+                      ),
                     ),
-                  ),
+                  if (entry == null || videoController == null) ...[
+                    Positioned.fill(
+                      child: CustomPaint(painter: _PlayerBackdropPainter()),
+                    ),
+                    const Center(
+                      child: Icon(
+                        Icons.play_circle_fill_rounded,
+                        size: 76,
+                        color: Color(0xff00c2a8),
+                      ),
+                    ),
+                  ],
                   Positioned(
                     left: 16,
                     right: 16,
