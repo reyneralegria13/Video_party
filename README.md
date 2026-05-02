@@ -8,6 +8,7 @@ Aplicativo Flutter para a disciplina de Sistemas Distribuidos. Ele implementa um
 - O trafego de arquivo entre peers usa uma cifra simples `xor-sha256-demo` para fins didaticos.
 - Se o acesso direto falhar, o app tenta um relay de download pelo tracker.
 - Ao reproduzir um item da playlist, o app toca o arquivo local com `media_kit` e inicia prefetch do proximo video em segundo plano.
+- A interface permite escolher entre tema padrao escuro, tema branco ou tema seguindo o sistema.
 
 ## Identidade visual
 

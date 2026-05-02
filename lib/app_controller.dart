@@ -9,6 +9,8 @@ import 'models.dart';
 import 'peer_node.dart';
 import 'tracker_server.dart';
 
+enum AppVisualTheme { standard, light, system }
+
 class AppController extends ChangeNotifier {
   AppController() : peer = PeerNode(onLog: _pendingLog) {
     _pendingController = this;
@@ -42,6 +44,7 @@ class AppController extends ChangeNotifier {
   String advertisedHost = '127.0.0.1';
   int uploadPort = 5051;
   String folderPath = '';
+  AppVisualTheme visualTheme = AppVisualTheme.standard;
 
   PlaylistEntry? nowPlaying;
   int nowPlayingIndex = -1;
@@ -254,6 +257,11 @@ class AppController extends ChangeNotifier {
     this.advertisedHost = advertisedHost ?? this.advertisedHost;
     this.uploadPort = uploadPort ?? this.uploadPort;
     this.folderPath = folderPath ?? this.folderPath;
+  }
+
+  void updateVisualTheme(AppVisualTheme value) {
+    visualTheme = value;
+    notifyListeners();
   }
 
   void _syncLocalSnapshot() {

@@ -8,5 +8,8 @@ void main() {
     expect(find.text('Video Party P2P'), findsOneWidget);
     expect(find.text('Iniciar tracker'), findsOneWidget);
     expect(find.text('Pasta de videos'), findsOneWidget);
+    expect(find.text('Padrao'), findsOneWidget);
+    expect(find.text('Branco'), findsOneWidget);
+    expect(find.text('Sistema'), findsOneWidget);
   });
 }

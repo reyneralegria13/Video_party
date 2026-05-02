@@ -10,37 +10,62 @@ void main() {
   runApp(const VideoPartyApp());
 }
 
-class VideoPartyApp extends StatelessWidget {
+class VideoPartyApp extends StatefulWidget {
   const VideoPartyApp({super.key});
 
   @override
+  State<VideoPartyApp> createState() => _VideoPartyAppState();
+}
+
+class _VideoPartyAppState extends State<VideoPartyApp> {
+  late final AppController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AppController();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Video Party P2P',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xff00c2a8),
-          brightness: Brightness.dark,
-        ),
-        scaffoldBackgroundColor: const Color(0xff101114),
-        useMaterial3: true,
-      ),
-      home: const PartyHomePage(),
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'Video Party P2P',
+          debugShowCheckedModeBanner: false,
+          themeMode: switch (controller.visualTheme) {
+            AppVisualTheme.standard => ThemeMode.dark,
+            AppVisualTheme.light => ThemeMode.light,
+            AppVisualTheme.system => ThemeMode.system,
+          },
+          theme: _buildTheme(Brightness.light),
+          darkTheme: _buildTheme(Brightness.dark),
+          home: PartyHomePage(controller: controller),
+        );
+      },
     );
   }
 }
 
 class PartyHomePage extends StatefulWidget {
-  const PartyHomePage({super.key});
+  const PartyHomePage({required this.controller, super.key});
+
+  final AppController controller;
 
   @override
   State<PartyHomePage> createState() => _PartyHomePageState();
 }
 
 class _PartyHomePageState extends State<PartyHomePage> {
-  late final AppController controller;
+  AppController get controller => widget.controller;
+
   late final TextEditingController peerName;
   late final TextEditingController trackerHost;
   late final TextEditingController trackerPort;
@@ -51,7 +76,7 @@ class _PartyHomePageState extends State<PartyHomePage> {
   @override
   void initState() {
     super.initState();
-    controller = AppController();
+    final controller = widget.controller;
     peerName = TextEditingController(text: controller.peerName);
     trackerHost = TextEditingController(text: controller.trackerHost);
     trackerPort = TextEditingController(text: '${controller.trackerPort}');
@@ -62,7 +87,6 @@ class _PartyHomePageState extends State<PartyHomePage> {
 
   @override
   void dispose() {
-    controller.dispose();
     peerName.dispose();
     trackerHost.dispose();
     trackerPort.dispose();
@@ -128,10 +152,7 @@ class _PartyHomePageState extends State<PartyHomePage> {
                       );
                 return wide
                     ? content
-                    : ColoredBox(
-                        color: const Color(0xff101114),
-                        child: content,
-                      );
+                    : ColoredBox(color: context.appBackground, child: content);
               },
             ),
           ),
@@ -141,6 +162,81 @@ class _PartyHomePageState extends State<PartyHomePage> {
   }
 }
 
+ThemeData _buildTheme(Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  final scheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xff00c2a8),
+    brightness: brightness,
+  );
+  return ThemeData(
+    brightness: brightness,
+    colorScheme: scheme,
+    scaffoldBackgroundColor: dark ? const Color(0xff101114) : Colors.white,
+    useMaterial3: true,
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    ),
+  );
+}
+
+extension PartyPalette on BuildContext {
+  bool get isPartyDark => Theme.of(this).brightness == Brightness.dark;
+
+  Color get appBackground =>
+      isPartyDark ? const Color(0xff101114) : Colors.white;
+  Color get sidebarBackground =>
+      isPartyDark ? const Color(0xff181a1f) : const Color(0xffeef4f5);
+  Color get panelBackground =>
+      isPartyDark ? const Color(0xff15171b) : const Color(0xfff4f8f9);
+  Color get cardBackground =>
+      isPartyDark ? const Color(0xff181a1f) : Colors.white;
+  Color get raisedBackground =>
+      isPartyDark ? const Color(0xff1b1d22) : const Color(0xfff8fbfc);
+  Color get fieldBackground =>
+      isPartyDark ? const Color(0xff101114) : const Color(0xfff2f6f7);
+  Color get mediaBackground =>
+      isPartyDark ? const Color(0xff090a0c) : const Color(0xffeaf1f3);
+  Color get mediaStripe =>
+      isPartyDark ? const Color(0xff15181c) : const Color(0xffd5e1e5);
+  Color get tileBackground =>
+      isPartyDark ? const Color(0xff24272e) : const Color(0xffe9f0f2);
+  Color get rowBackground =>
+      isPartyDark ? const Color(0xff1c1f24) : Colors.white;
+  Color get selectedRowBackground =>
+      isPartyDark ? const Color(0xff20342f) : const Color(0xffdef8f1);
+  Color get borderColor =>
+      isPartyDark ? Colors.white10 : const Color(0xffd9e4e7);
+  Color get borderStrongColor =>
+      isPartyDark ? Colors.white12 : const Color(0xffcbd9dd);
+  Color get primaryAccent => const Color(0xff00c2a8);
+  Color get primaryAccentSoft =>
+      isPartyDark ? const Color(0xff38e8c6) : const Color(0xff007f71);
+  Color get warningAccent => const Color(0xffffbd59);
+  Color get secondaryAccent => const Color(0xff00a3ff);
+  Color get textMuted => isPartyDark ? Colors.white60 : const Color(0xff5a6670);
+  Color get textSubtle =>
+      isPartyDark ? Colors.white54 : const Color(0xff66737d);
+  Color get textFaint => isPartyDark ? Colors.white38 : const Color(0xff87939b);
+  Color get navSelected =>
+      isPartyDark ? const Color(0xff25322f) : const Color(0xffdff8f2);
+  Color get statusActiveBackground =>
+      isPartyDark ? const Color(0xff183a32) : const Color(0xffdff8f2);
+  Color get statusInactiveBackground =>
+      isPartyDark ? const Color(0xff25272d) : const Color(0xffeef3f5);
+}
+
 class _SideBar extends StatelessWidget {
   const _SideBar();
 
@@ -148,16 +244,20 @@ class _SideBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: 78,
-      color: const Color(0xff181a1f),
-      child: const Column(
+      color: context.sidebarBackground,
+      child: Column(
         children: [
-          SizedBox(height: 20),
-          Icon(Icons.movie_filter_rounded, color: Color(0xff00c2a8), size: 34),
-          SizedBox(height: 28),
-          _NavIcon(icon: Icons.home_rounded, selected: true),
-          _NavIcon(icon: Icons.queue_music_rounded),
-          _NavIcon(icon: Icons.cloud_download_rounded),
-          _NavIcon(icon: Icons.settings_rounded),
+          const SizedBox(height: 20),
+          Icon(
+            Icons.movie_filter_rounded,
+            color: context.primaryAccent,
+            size: 34,
+          ),
+          const SizedBox(height: 28),
+          const _NavIcon(icon: Icons.home_rounded, selected: true),
+          const _NavIcon(icon: Icons.queue_music_rounded),
+          const _NavIcon(icon: Icons.cloud_download_rounded),
+          const _NavIcon(icon: Icons.settings_rounded),
         ],
       ),
     );
@@ -178,14 +278,12 @@ class _NavIcon extends StatelessWidget {
         tooltip: '',
         onPressed: () {},
         style: IconButton.styleFrom(
-          backgroundColor: selected
-              ? const Color(0xff25322f)
-              : Colors.transparent,
+          backgroundColor: selected ? context.navSelected : Colors.transparent,
           fixedSize: const Size(48, 48),
         ),
         icon: Icon(
           icon,
-          color: selected ? const Color(0xff00c2a8) : Colors.white70,
+          color: selected ? context.primaryAccent : context.textSubtle,
         ),
       ),
     );
@@ -246,14 +344,14 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Video Party P2P',
-          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           'Playlist colaborativa com tracker hibrido, peers TCP e prefetch.',
-          style: TextStyle(color: Colors.white60),
+          style: TextStyle(color: context.textMuted),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -315,7 +413,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: active ? const Color(0xff183a32) : const Color(0xff25272d),
+        color: active
+            ? context.statusActiveBackground
+            : context.statusInactiveBackground,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -324,7 +424,7 @@ class _StatusChip extends StatelessWidget {
           Icon(
             icon,
             size: 18,
-            color: active ? const Color(0xff38e8c6) : Colors.white54,
+            color: active ? context.primaryAccentSoft : context.textSubtle,
           ),
           const SizedBox(width: 7),
           Text(label, style: const TextStyle(fontSize: 12)),
@@ -358,9 +458,9 @@ class _ControlPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xff181a1f),
+        color: context.cardBackground,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.borderColor),
       ),
       child: Column(
         children: [
@@ -387,6 +487,11 @@ class _ControlPanel extends StatelessWidget {
                 width: 280,
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _ThemeSelector(controller: controller),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -465,9 +570,46 @@ class _Field extends StatelessWidget {
           labelText: label,
           isDense: true,
           filled: true,
-          fillColor: const Color(0xff101114),
+          fillColor: context.fieldBackground,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
         ),
+      ),
+    );
+  }
+}
+
+class _ThemeSelector extends StatelessWidget {
+  const _ThemeSelector({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SegmentedButton<AppVisualTheme>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: AppVisualTheme.standard,
+            icon: Icon(Icons.dark_mode_rounded),
+            label: Text('Padrao'),
+          ),
+          ButtonSegment(
+            value: AppVisualTheme.light,
+            icon: Icon(Icons.light_mode_rounded),
+            label: Text('Branco'),
+          ),
+          ButtonSegment(
+            value: AppVisualTheme.system,
+            icon: Icon(Icons.brightness_auto_rounded),
+            label: Text('Sistema'),
+          ),
+        ],
+        selected: {controller.visualTheme},
+        onSelectionChanged: (selection) {
+          controller.updateVisualTheme(selection.single);
+        },
       ),
     );
   }
@@ -492,9 +634,9 @@ class _NowPlaying extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 280),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xff1b1d22),
+        color: context.raisedBackground,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,9 +645,9 @@ class _NowPlaying extends StatelessWidget {
             aspectRatio: 16 / 6.7,
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xff090a0c),
+                color: context.mediaBackground,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.white12),
+                border: Border.all(color: context.borderStrongColor),
               ),
               child: Stack(
                 children: [
@@ -518,7 +660,12 @@ class _NowPlaying extends StatelessWidget {
                     ),
                   if (entry == null || videoController == null) ...[
                     Positioned.fill(
-                      child: CustomPaint(painter: _PlayerBackdropPainter()),
+                      child: CustomPaint(
+                        painter: _PlayerBackdropPainter(
+                          stripeColor: context.mediaStripe,
+                          accentColor: context.primaryAccent,
+                        ),
+                      ),
                     ),
                     const Center(
                       child: Icon(
@@ -548,8 +695,8 @@ class _NowPlaying extends StatelessWidget {
                         LinearProgressIndicator(
                           value: progress,
                           minHeight: 5,
-                          color: const Color(0xff00c2a8),
-                          backgroundColor: Colors.white12,
+                          color: context.primaryAccent,
+                          backgroundColor: context.borderStrongColor,
                         ),
                       ],
                     ),
@@ -576,14 +723,14 @@ class _NowPlaying extends StatelessWidget {
               const SizedBox(width: 10),
               Text(
                 '${_clock(controller.playbackSeconds)} / ${_clock(controller.playbackDuration)}',
-                style: const TextStyle(color: Colors.white70),
+                style: TextStyle(color: context.textMuted),
               ),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 520),
                 child: Text(
                   'Downloads: ${controller.downloadFolder}',
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: context.textSubtle, fontSize: 12),
                 ),
               ),
             ],
@@ -601,14 +748,22 @@ class _NowPlaying extends StatelessWidget {
 }
 
 class _PlayerBackdropPainter extends CustomPainter {
+  const _PlayerBackdropPainter({
+    required this.stripeColor,
+    required this.accentColor,
+  });
+
+  final Color stripeColor;
+  final Color accentColor;
+
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xff15181c);
+    final paint = Paint()..color = stripeColor;
     for (var i = 0; i < 10; i++) {
       final x = size.width * i / 9;
       canvas.drawRect(Rect.fromLTWH(x - 1, 0, 2, size.height), paint);
     }
-    final accent = Paint()..color = const Color(0x2238e8c6);
+    final accent = Paint()..color = accentColor.withValues(alpha: 0.14);
     canvas.drawCircle(
       Offset(size.width * .78, size.height * .18),
       size.width * .18,
@@ -622,7 +777,10 @@ class _PlayerBackdropPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _PlayerBackdropPainter oldDelegate) {
+    return oldDelegate.stripeColor != stripeColor ||
+        oldDelegate.accentColor != accentColor;
+  }
 }
 
 class _Library extends StatelessWidget {
@@ -699,10 +857,10 @@ class _VideoTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xff181a1f),
+        color: context.cardBackground,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: local ? const Color(0xff00c2a8) : Colors.white10,
+          color: local ? context.primaryAccent : context.borderColor,
         ),
       ),
       child: Column(
@@ -711,7 +869,7 @@ class _VideoTile extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: const Color(0xff24272e),
+                color: context.tileBackground,
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Center(
@@ -719,9 +877,7 @@ class _VideoTile extends StatelessWidget {
                   local
                       ? Icons.offline_pin_rounded
                       : Icons.movie_creation_rounded,
-                  color: local
-                      ? const Color(0xff00c2a8)
-                      : const Color(0xffffbd59),
+                  color: local ? context.primaryAccent : context.warningAccent,
                   size: 42,
                 ),
               ),
@@ -737,7 +893,7 @@ class _VideoTile extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             formatBytes(video.size),
-            style: const TextStyle(color: Colors.white54, fontSize: 12),
+            style: TextStyle(color: context.textSubtle, fontSize: 12),
           ),
           const SizedBox(height: 8),
           Row(
@@ -747,7 +903,7 @@ class _VideoTile extends StatelessWidget {
                   local
                       ? 'local'
                       : '${video.hash.substring(0, video.hash.length < 8 ? video.hash.length : 8)}...',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: context.textSubtle, fontSize: 12),
                 ),
               ),
               IconButton.filledTonal(
@@ -771,7 +927,7 @@ class _RightPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xff15171b),
+      color: context.panelBackground,
       padding: const EdgeInsets.all(16),
       child: ListView(
         children: [
@@ -814,7 +970,7 @@ class _RightPanel extends StatelessWidget {
               title: Text(peer.name, overflow: TextOverflow.ellipsis),
               subtitle: Text(
                 '${peer.host}:${peer.port}',
-                style: const TextStyle(color: Colors.white54),
+                style: TextStyle(color: context.textSubtle),
               ),
             ),
           ),
@@ -828,7 +984,7 @@ class _RightPanel extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
                     log,
-                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    style: TextStyle(color: context.textMuted, fontSize: 12),
                   ),
                 ),
               ),
@@ -848,7 +1004,7 @@ class _PanelTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, color: const Color(0xff00c2a8)),
+        Icon(icon, color: context.primaryAccent),
         const SizedBox(width: 8),
         Text(
           title,
@@ -881,10 +1037,10 @@ class _PlaylistRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 9),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: selected ? const Color(0xff20342f) : const Color(0xff1c1f24),
+        color: selected ? context.selectedRowBackground : context.rowBackground,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: selected ? const Color(0xff00c2a8) : Colors.white10,
+          color: selected ? context.primaryAccent : context.borderColor,
         ),
       ),
       child: Column(
@@ -910,19 +1066,14 @@ class _PlaylistRow extends StatelessWidget {
                       local
                           ? 'Pronto localmente'
                           : progress?.status ?? 'Disponivel na rede',
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: context.textSubtle, fontSize: 12),
                     ),
                   ],
                 ),
               ),
               Icon(
                 local ? Icons.offline_pin_rounded : Icons.public_rounded,
-                color: local
-                    ? const Color(0xff00c2a8)
-                    : const Color(0xffffbd59),
+                color: local ? context.primaryAccent : context.warningAccent,
               ),
             ],
           ),
@@ -931,8 +1082,8 @@ class _PlaylistRow extends StatelessWidget {
             LinearProgressIndicator(
               value: downloadProgress,
               minHeight: 4,
-              color: const Color(0xffffbd59),
-              backgroundColor: Colors.white12,
+              color: context.warningAccent,
+              backgroundColor: context.borderStrongColor,
             ),
           ],
         ],
@@ -952,16 +1103,16 @@ class _EmptyState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xff1b1d22),
+        color: context.raisedBackground,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(color: context.borderColor),
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white38),
+          Icon(icon, color: context.textFaint),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(text, style: const TextStyle(color: Colors.white60)),
+            child: Text(text, style: TextStyle(color: context.textMuted)),
           ),
         ],
       ),
