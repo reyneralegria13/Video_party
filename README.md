@@ -9,6 +9,10 @@ Aplicativo Flutter para a disciplina de Sistemas Distribuidos. Ele implementa um
 - Se o acesso direto falhar, o app tenta um relay de download pelo tracker.
 - Ao reproduzir um item da playlist, o app toca o arquivo local com `media_kit` e inicia prefetch do proximo video em segundo plano.
 
+## Identidade visual
+
+O icone do app representa uma tela de video com um play central, tres nos conectados para simbolizar tracker/peers e cores neon para reforcar a ideia de uma festa colaborativa. A arte base fica em `assets/brand/video_party_icon.svg`, e os assets de Windows, macOS e web sao gerados por `tool/generate_app_icons.py`.
+
 ## Como rodar
 
 Use desktop, pois o projeto usa `dart:io` para sockets TCP e arquivos locais.
