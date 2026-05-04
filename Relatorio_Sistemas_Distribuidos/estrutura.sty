@@ -1,0 +1,157 @@
+\NeedsTeXFormat{LaTeX2e}[1994/06/01]
+\ProvidesPackage{estrutura}[2023/12/04 Modelo para Monografias, Artigos e Relatórios Técnicos]
+
+\usepackage[alf,abnt-emphasize=bf]{abntex2cite}
+\usepackage[brazilian,hyperpageref]{backref}
+
+\RequirePackage{lmodern}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lastpage}
+\RequirePackage{indentfirst}
+\RequirePackage{xcolor,colortbl}
+\RequirePackage{graphicx}
+\RequirePackage{microtype}
+\RequirePackage{subfig}
+\RequirePackage{epigraph}
+\RequirePackage{url}
+\RequirePackage{placeins}
+\RequirePackage{multirow}
+\RequirePackage[figuresright]{rotating}
+\RequirePackage{chemfig}
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\RequirePackage{tabularx}
+\RequirePackage{booktabs}
+\RequirePackage{lastpage}
+\RequirePackage{enumitem}
+\RequirePackage{bigints}
+\RequirePackage{listingsutf8}
+\RequirePackage{etoolbox}
+\RequirePackage[final]{pdfpages}
+\RequirePackage{bigstrut}
+\RequirePackage{hyperref}
+%\RequirePackage[brazilian,hyperpageref]{backref}
+%\RequirePackage[alf,abnt-emphasize=bf]{abntex2cite}
+
+%\bibliographystyle{abntex2-custom/abntex2-alf.bst}
+
+% Configuração de cores e estilo para linguagem C
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize, % Fonte tipo máquina de escrever
+    breakatwhitespace=false,
+    breaklines=true,                 % Quebra linhas automáticas
+    captionpos=t,                    % Legenda no topo
+    keepspaces=true,
+    numbers=left,                    % Números na esquerda
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    language=C                       % Define a linguagem como C
+}
+
+\lstset{style=mystyle}
+
+% --- CONFIGURAÇÃO PARA NUMERAR SEÇÕES SEM CAPÍTULOS ---
+% Remove a dependência do capítulo da numeração da seção
+\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
+\renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
+
+% Ajusta o sumário para não esperar por capítulos
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+% ---------------------------------------------------------
+
+% ajuste para remoção de warning para apêndices e anexos
+\renewcommand{\PRIVATEapendiceconfig}[2]{%
+   \setboolean{abntex@apendiceousecao}{true}%
+   \renewcommand{\appendixname}{#1}
+   \ifthenelse{\boolean{ABNTEXsumario-abnt-6027-2012}}{
+       \renewcommand{\appendixtocname}{\texorpdfstring{\MakeTextUppercase{#2}}{#2}}
+   }{%
+   \renewcommand{\appendixtocname}{#2}} 
+   \renewcommand{\appendixpagename}{#2}
+   \switchchapname{#1}% Corrected from \switchapname -> \switchchapname
+   \renewcommand*{\cftappendixname}{#1 \space}
+}
+
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+
+\definecolor{blue}{RGB}{41,5,195}
+
+\makeatletter
+\hypersetup{
+	%pagebackref=true,
+	pdftitle={\@title}, 
+	pdfauthor={\@author},
+	%pdfsubject={\imprimirpreambulo},
+	pdfcreator={Nome Completo},
+	pdfkeywords={Palavra chave 1}{Palavra chave 2}{Palavra chave 3}{Palavra chave n}, 
+	colorlinks=true,       		% false: boxed links; true: colored links
+	linkcolor=black,          	% color of internal links
+	citecolor=black,       		% color of links to bibliography
+	filecolor=black,      		% color of file links
+	urlcolor=black,
+	bookmarksdepth=4
+}
+\makeatother
+
+\newcommand{\citeauthorandyear}[1]{\citeauthoronline{#1} (\citeyear{#1})}
+
+
+\newcommand{\quadroname}{Quadro}
+\newcommand{\listofquadrosname}{Lista de Quadros}
+
+\newfloat[chapter]{quadro}{loq}{\quadroname}
+\newlistof{listofquadros}{loq}{\listofquadrosname}
+\newlistentry{quadro}{loq}{0}
+
+% configurações para atender às regras da ABNT
+\setfloatadjustment{quadro}{\centering}
+\counterwithout{quadro}{chapter}
+\renewcommand{\cftquadroname}{\quadroname\space} 
+\renewcommand*{\cftquadroaftersnum}{\hfill--\hfill}
+
+% Configuração de posicionamento padrão:
+\setfloatlocations{quadro}{hbtp}
+
+% em versões mais novas do abntex2 o preenchimento da macro
+% \tituloestrangeiro tornou-se obrigatório.
+% abaixo redefine-se a macro \maketitlehookb que usa o 
+% título estrangeiro para inserção no cabeçalho e que gera
+% erros caso não tenha se definido tal título
+\renewcommand{\maketitlehookb}{}
+
+\newcommand{\definirdata}{\data{\imprimirdia\ de \imprimirmes\ de \imprimirano}}
+
+\newcommand{\definirautores}{%
+\ifdef{\ocoorientador}{
+	\autor{\imprimiraluno\thanks{Graduando do Curso Superior em \imprimircurso.} \and \imprimircoorientador\thanks{\imprimircoorientador. Graduado em \imprimirgradcoorientador, pela \imprimirinstgradcoorientador, \imprimirposcoorientador, pela \imprimirinstposcoorientador. Docente do Curso Superior em \imprimirdoccoorientador.} \and \imprimirorientador\thanks{\imprimirorientador. Graduado em \imprimirgradorientador, pela \imprimirinstgradorientador, \imprimirposorientador, pela \imprimirinstposorientador. Docente do Curso Superior em \imprimirdocorientador.}}}%
+{
+	\autor{\imprimiraluno \thanks{Graduando do Curso Superior em \imprimircurso.} \and \imprimirorientador\thanks{\imprimirorientador. Graduado em \imprimirgradorientador, pela \imprimirinstgradorientador, \imprimirposorientador, pela \imprimirposorientador. Docente do Curso Superior em \imprimirdocorientador.}}
+}
+}%
+
+% Garante que as seções após os elementos pré-textuais comecem no nível raiz
+% dos marcadores, em vez de ficarem aninhadas sob o Resumo.
+\apptocmd{\textual}{\bookmarksetup{startatroot}}{}{}
+
+% Força o estilo de página para 'plain' (apenas número no rodapé) após
+% o comando \textual, desativando os cabeçalhos que ele ativa por padrão.
+\apptocmd{\textual}{\pagestyle{plain}}{}{}
+
+\endinput

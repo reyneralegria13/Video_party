@@ -1,0 +1,349 @@
+\documentclass[
+	12pt,
+	oneside,
+	a4paper,
+	chapter=TITLE,
+	section=TITLE,
+	english,
+	brazilian,
+	sumario=tradicional
+]{abntex2}
+
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+\usepackage{geometry}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{estrutura}
+\usepackage{float}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\titulo{Relatório Técnico - Video Party P2P}
+\autor{Felipe William Galdino da Silva, \\ João Carlos G. Iannuzzi, \\ Reyner C. Silva Alegria}
+\local{Itacoatiara - AM}
+\data{\the\year}
+\preambulo{Trabalho apresentado ao professor Antonio Alberto Sena dos Santos, do Instituto de Ciências Exatas e Tecnologia da Universidade Federal do Amazonas, como atividade prática para a obtenção de nota na disciplina de Sistemas Distribuídos.}
+
+\makeindex
+
+\setlrmarginsandblock{3cm}{3cm}{*}
+\setulmarginsandblock{3cm}{3cm}{*}
+\checkandfixthelayout
+\setlength{\parindent}{1.3cm}
+\setlength{\parskip}{0.2cm}
+\setlength{\ABNTEXcitacaorecuo}{1.8cm}
+\OnehalfSpacing
+
+\newcommand{\espacofigura}[3]{%
+\begin{figure}[H]
+	\centering
+	\fbox{%
+		\begin{minipage}[c][5cm][c]{0.85\textwidth}
+			\centering
+			\textbf{Espaço reservado para imagem}\\[0.4cm]
+			#2
+		\end{minipage}
+	}
+	\caption{#3}
+	\label{#1}
+\end{figure}
+}
+
+\begin{document}
+
+\selectlanguage{brazilian}
+\frenchspacing
+
+\begin{capa}
+	\pdfbookmark[0]{Capa}{capa}
+	\thispagestyle{empty}
+	\centering
+	\begin{tikzpicture}[remember picture, overlay]
+		\tikzset{inner sep=0pt, outer sep=0pt}
+		\node[anchor=north] at (current page.north)
+		{\includegraphics[width=\paperwidth]{imagens/Cabeçalho.pdf}};
+	\end{tikzpicture}
+
+	\vspace*{1cm}
+	{\ABNTEXsectionfont\large\imprimirautor}
+	\vspace*{\fill}
+
+	{\ABNTEXsectionfont\bfseries\large\imprimirtitulo}
+	\vspace*{\fill}
+
+	{\large Relatório Técnico}
+	\vspace*{\fill}
+
+	\begin{tabular}{c}
+		{\large\imprimirlocal}\\
+		{\large\imprimirdata}
+	\end{tabular}
+	\vspace*{1cm}
+\end{capa}
+
+\imprimirfolhaderosto
+
+\tableofcontents
+\newpage
+
+\begin{resumo}
+Este relatório apresenta o desenvolvimento do Video Party P2P, uma aplicação desktop criada em Flutter para demonstrar conceitos de sistemas distribuídos por meio de uma festa colaborativa de vídeos. A solução implementa uma arquitetura P2P híbrida: um tracker TCP centraliza metadados, peers e a playlist global, enquanto os arquivos são transferidos diretamente entre clientes. Cada cliente também atua como servidor de upload TCP, permitindo que vídeos sejam anunciados, localizados, baixados em partes paralelas, validados por SHA-256 e reproduzidos localmente. O sistema ainda inclui transferência cifrada didática, fallback por relay no tracker, prefetch do próximo item da playlist e interface gráfica para operação em rede local ou via Tailscale.
+
+\vspace{\onelineskip}
+\noindent\textbf{Palavras-chave}: sistemas distribuídos; peer-to-peer; TCP; Flutter; transferência de arquivos.
+\end{resumo}
+
+\textual
+
+\section{Introdução}
+
+Sistemas distribuídos são formados por componentes independentes que se comunicam por rede para oferecer ao usuário a impressão de um sistema único \cite{tanenbaum2017distributed}. Esse modelo aparece em aplicações de compartilhamento de arquivos, streaming, armazenamento replicado, jogos, mensageria e diversas arquiteturas modernas de computação. Entre as organizações possíveis, redes \textit{peer-to-peer} (P2P) se destacam por distribuir responsabilidades entre os próprios clientes, reduzindo a dependência de um servidor único para transferência de dados \cite{coulouris2012distributed}.
+
+O trabalho desenvolvido neste repositório, denominado \textbf{Video Party P2P}, aplica esses conceitos em um cenário prático: uma playlist colaborativa de vídeos. A proposta é permitir que diferentes máquinas compartilhem arquivos de vídeo em uma rede, adicionem itens a uma playlist global e reproduzam esses vídeos localmente após o download. Para simplificar descoberta e coordenação, foi adotada uma arquitetura P2P híbrida, na qual um tracker central registra metadados e peers, mas a transferência de arquivos ocorre preferencialmente de peer para peer.
+
+O projeto foi implementado em Flutter e Dart, utilizando sockets TCP da biblioteca \texttt{dart:io}, cálculo de hashes com \texttt{crypto} e reprodução multimídia com \texttt{media\_kit}. Como resultado, o sistema demonstra comunicação por mensagens, descoberta de recursos, transferência direta, paralelismo, verificação de integridade, tolerância parcial a falhas por relay e atualização dinâmica de estado na interface.
+
+\section{Objetivos}
+
+O objetivo geral do trabalho foi construir uma aplicação funcional que materializasse conceitos de sistemas distribuídos em uma experiência visual e testável. Em vez de apenas simular mensagens, o sistema deveria transferir arquivos reais entre máquinas e permitir a reprodução local dos vídeos baixados.
+
+Os objetivos específicos foram:
+
+\begin{itemize}
+	\item implementar um tracker TCP para registro de peers, vídeos e playlist global;
+	\item permitir que cada cliente atue também como servidor de upload;
+	\item localizar arquivos por hash e por nome, mantendo compatibilidade com a ideia de comando \texttt{LOOKUP <nome>};
+	\item realizar downloads diretamente entre peers, com divisão do arquivo em até quatro partes paralelas;
+	\item aplicar uma cifra simples baseada em XOR e SHA-256 com finalidade didática;
+	\item validar a integridade do arquivo baixado por meio de hash SHA-256;
+	\item oferecer relay pelo tracker quando a conexão direta entre peers falhar;
+	\item disponibilizar uma interface gráfica para configuração da rede, playlist, downloads e reprodução.
+\end{itemize}
+
+\section{Fundamentação Teórica}
+
+\subsection{Arquitetura P2P híbrida}
+
+Em uma arquitetura cliente-servidor pura, o servidor concentra o armazenamento e a entrega dos dados. Em uma arquitetura P2P, os clientes também fornecem recursos diretamente uns aos outros. O Video Party P2P adota uma organização híbrida: o tracker funciona como ponto conhecido de coordenação, mas não é o caminho principal dos arquivos. Essa escolha reduz a complexidade de descoberta e preserva a característica distribuída da transferência.
+
+O tracker mantém uma visão global dos vídeos disponíveis, dos peers conectados e da playlist. Os peers mantêm suas bibliotecas locais, calculam hashes dos arquivos, anunciam sua disponibilidade e atendem solicitações de download. Assim, o sistema separa controle e dados: mensagens de controle passam pelo tracker; bytes de vídeo trafegam diretamente entre peers sempre que possível.
+
+\subsection{Comunicação TCP e mensagens JSON}
+
+A comunicação foi implementada sobre TCP, protocolo que oferece fluxo confiável, ordenado e orientado a conexão \cite{rfc9293}. Cada comando do sistema é enviado como uma linha JSON terminada por \texttt{\textbackslash n}. Esse formato facilita a interoperabilidade e a depuração, pois cada mensagem pode ser lida e interpretada como uma estrutura textual clara.
+
+No tracker, comandos como \texttt{REGISTER}, \texttt{LIST}, \texttt{LOOKUP}, \texttt{DOWNLOAD}, \texttt{ADD\_PLAYLIST} e \texttt{RELAY\_DOWNLOAD} representam as operações de controle. Nos peers, o comando principal é \texttt{GET\_FILE}, usado para solicitar um intervalo específico de bytes de um arquivo.
+
+\subsection{Integridade, hash e cifra didática}
+
+Cada vídeo é identificado por seu hash SHA-256, calculado sobre o conteúdo completo do arquivo. Esse identificador evita depender apenas do nome do arquivo e permite verificar se o arquivo recebido é exatamente igual ao anunciado. Ao final de cada download, o cliente recalcula o SHA-256 do arquivo remontado e compara o resultado com o hash registrado no tracker \cite{nist2015sha}.
+
+O tráfego entre peers utiliza uma cifra simples chamada \texttt{xor-sha256-demo}. Ela combina XOR com blocos derivados de SHA-256 a partir de uma chave fixa do projeto. Essa abordagem não deve ser tratada como criptografia de produção, mas cumpre uma função didática: mostrar que a transferência pode aplicar transformações sobre os bytes e desfazê-las no receptor mantendo a verificação de integridade.
+
+\section{Arquitetura da Solução}
+
+A implementação foi organizada em cinco módulos principais:
+
+\begin{itemize}
+	\item \texttt{models.dart}: define os modelos de domínio, como vídeo, peer, entrada de playlist, snapshot do tracker e progresso de download;
+	\item \texttt{tracker\_server.dart}: implementa o servidor TCP responsável por registro, listagem, busca, playlist e relay;
+	\item \texttt{peer\_node.dart}: implementa o servidor de upload do peer, varredura de pasta, download direto, download por relay, cifra e validação de hash;
+	\item \texttt{app\_controller.dart}: coordena estado da aplicação, conexões, downloads, player, prefetch e notificações para a interface;
+	\item \texttt{main.dart}: implementa a interface Flutter com painel de configuração, catálogo global, playlist, player, eventos e seleção de tema.
+\end{itemize}
+
+\begin{table}[H]
+	\centering
+	\caption{Responsabilidades dos componentes da aplicação}
+	\begin{tabular}{|p{4cm}|p{9cm}|}
+		\hline
+		\rowcolor{gray!25}
+		\textbf{Componente} & \textbf{Responsabilidade} \\
+		\hline
+		Tracker & Manter metadados globais, responder consultas, registrar peers e atuar como relay quando necessário. \\
+		\hline
+		Peer & Escanear vídeos locais, calcular hashes, servir uploads e baixar arquivos de outros peers. \\
+		\hline
+		Cliente Flutter & Exibir estado da rede, controlar configurações, reproduzir vídeos e acompanhar progresso de downloads. \\
+		\hline
+		Playlist global & Representar a fila colaborativa compartilhada entre os participantes. \\
+		\hline
+	\end{tabular}
+	\label{tab:componentes}
+\end{table}
+
+\espacofigura{fig:arquitetura}{Inserir aqui um diagrama da arquitetura P2P híbrida, com o tracker ao centro, peers ao redor, setas de controle para o tracker e setas de transferência direta entre peers.}{Área reservada para o diagrama da arquitetura geral do Video Party P2P.}
+
+\subsection{Fluxo geral}
+
+O fluxo de uso previsto envolve duas ou mais máquinas. Uma delas inicia o tracker e ativa também seu servidor de upload. Cada máquina informa seu IP anunciado, porta de upload e pasta local de vídeos. Ao escanear a pasta, o peer calcula o SHA-256 dos arquivos suportados e registra esses metadados no tracker. Depois disso, qualquer cliente pode atualizar a rede, visualizar o catálogo global, adicionar vídeos à playlist e reproduzir um item.
+
+Quando um vídeo da playlist não está disponível localmente, o cliente consulta o tracker para descobrir quais peers possuem aquele hash. Em seguida, tenta baixar o arquivo diretamente dos peers encontrados. Se a conexão direta falhar, o cliente solicita ao tracker um \texttt{RELAY\_DOWNLOAD}; nesse caso, o tracker conecta em um peer dono do arquivo e repassa os bytes ao solicitante.
+
+\espacofigura{fig:interface}{Inserir aqui um print da tela principal do aplicativo, mostrando configuração de tracker, upload, catálogo global, playlist e painel de eventos.}{Área reservada para a interface principal do aplicativo em execução.}
+
+\section{Protocolo Implementado}
+
+O protocolo usa mensagens JSON sobre TCP. A Listagem \ref{lst:register} mostra o registro de um peer com seus vídeos locais.
+
+\begin{lstlisting}[caption={Mensagem REGISTER enviada ao tracker.}, label={lst:register}]
+{
+  "type": "REGISTER",
+  "peer": {
+    "id": "peer-1",
+    "name": "DJ Video",
+    "host": "100.x.x.x",
+    "port": 5051
+  },
+  "videos": [
+    {"name": "show.mp4", "hash": "sha256", "size": 104857600}
+  ]
+}
+\end{lstlisting}
+
+A busca pode ocorrer por hash ou por nome. O suporte à busca por nome aproxima o protocolo JSON da especificação textual \texttt{LOOKUP <nome>}, preservando legibilidade e estrutura.
+
+\begin{lstlisting}[caption={Consulta por nome no tracker.}, label={lst:lookup}]
+{"type": "LOOKUP", "name": "show.mp4"}
+\end{lstlisting}
+
+Para transferência direta, o peer solicitante envia \texttt{GET\_FILE} ao peer dono do arquivo, informando hash, deslocamento inicial e tamanho do intervalo desejado. Essa divisão permite downloads em partes paralelas.
+
+\begin{lstlisting}[caption={Solicitação de intervalo de arquivo a um peer.}, label={lst:getfile}]
+{
+  "type": "GET_FILE",
+  "hash": "sha256",
+  "offset": 0,
+  "length": 1048576,
+  "encrypted": true
+}
+\end{lstlisting}
+
+Caso a conexão direta não seja possível, o cliente usa o relay do tracker:
+
+\begin{lstlisting}[caption={Solicitação de relay ao tracker.}, label={lst:relay}]
+{
+  "type": "RELAY_DOWNLOAD",
+  "hash": "sha256",
+  "requesterId": "peer-2",
+  "offset": 0,
+  "length": 1048576,
+  "encrypted": true
+}
+\end{lstlisting}
+
+\espacofigura{fig:sequencia}{Inserir aqui um diagrama de sequência com os passos REGISTER, LOOKUP, GET\_FILE e RELAY\_DOWNLOAD entre peer solicitante, tracker e peer dono do arquivo.}{Área reservada para o diagrama de sequência do protocolo de comunicação.}
+
+\section{Metodologia de Desenvolvimento}
+
+O desenvolvimento foi conduzido de forma incremental. Primeiro foram definidos os modelos de domínio e o protocolo mínimo para registro e listagem. Em seguida, o tracker foi implementado como servidor TCP capaz de receber uma linha JSON, processar o comando e devolver uma resposta também em JSON.
+
+Depois, foi implementado o peer. Cada peer passou a escanear uma pasta local, filtrar extensões de vídeo, calcular SHA-256 e iniciar um servidor TCP de upload. A transferência direta foi então evoluída para aceitar intervalos de bytes, permitindo que o cliente dividisse um arquivo em partes. No código, o limite adotado foi de quatro partes paralelas, equilibrando simplicidade e demonstração de concorrência.
+
+Com a transferência direta pronta, foi adicionada a validação de integridade. Após baixar todas as partes, o cliente concatena os arquivos temporários, recalcula o hash do arquivo final e remove a saída caso o hash não corresponda ao esperado. Essa etapa é importante porque transforma o tracker em fonte de verdade para metadados e impede que uma transferência corrompida seja aceita.
+
+Em seguida, foi implementado o relay pelo tracker. Esse mecanismo atende cenários em que um peer não consegue conectar diretamente em outro, por exemplo devido a restrições de NAT ou firewall. O relay não substitui o P2P como caminho principal, mas aumenta a robustez do sistema.
+
+Por fim, a interface Flutter foi criada para tornar a experiência operacional. Ela permite iniciar tracker, ativar upload, registrar vídeos, atualizar catálogo, montar playlist, acompanhar downloads, reproduzir vídeo localmente e alternar entre temas \cite{flutterdocs,dartio,mediakit}.
+
+\section{Resultados}
+
+O resultado do trabalho é um aplicativo desktop funcional para Windows e Linux, com suporte a rede entre máquinas. Os principais comportamentos implementados foram:
+
+\begin{itemize}
+	\item inicialização de tracker local em \texttt{0.0.0.0:4040};
+	\item inicialização de servidor de upload em cada peer;
+	\item registro de arquivos de vídeo com nome, tamanho e hash SHA-256;
+	\item catálogo global consolidado pelo tracker;
+	\item playlist global compartilhada;
+	\item download direto peer-to-peer com tráfego cifrado;
+	\item download paralelo por intervalos de bytes;
+	\item validação de integridade após a remontagem;
+	\item relay pelo tracker como alternativa;
+	\item prefetch automático do próximo vídeo da playlist;
+	\item reprodução local usando \texttt{media\_kit};
+	\item interface responsiva com painel principal, barra lateral, painel de playlist, peers e eventos.
+\end{itemize}
+
+\espacofigura{fig:download}{Inserir aqui um print do aplicativo durante um download ou reprodução, mostrando progresso, playlist global e player embutido.}{Área reservada para evidência visual de download, playlist e reprodução local.}
+
+\begin{table}[H]
+	\centering
+	\caption{Resumo dos comandos do protocolo}
+	\begin{tabular}{|p{3.5cm}|p{9.5cm}|}
+		\hline
+		\rowcolor{gray!25}
+		\textbf{Comando} & \textbf{Função} \\
+		\hline
+		\texttt{REGISTER} & Registra peer e lista de vídeos disponíveis. \\
+		\hline
+		\texttt{LIST} & Retorna snapshot com vídeos, peers e playlist. \\
+		\hline
+		\texttt{LOOKUP} & Busca vídeo por hash ou nome e retorna peers donos. \\
+		\hline
+		\texttt{DOWNLOAD} & Alias de busca por hash usado antes do download. \\
+		\hline
+		\texttt{ADD\_PLAYLIST} & Adiciona um vídeo registrado à playlist global. \\
+		\hline
+		\texttt{GET\_FILE} & Solicita a um peer um intervalo de bytes do arquivo. \\
+		\hline
+		\texttt{RELAY\_DOWNLOAD} & Solicita ao tracker o repasse dos bytes quando o acesso direto falha. \\
+		\hline
+	\end{tabular}
+	\label{tab:comandos}
+\end{table}
+
+\section{Validação}
+
+A validação automatizada foi implementada em testes Flutter. O teste \texttt{p2p\_transfer\_test.dart} cobre dois cenários centrais. No primeiro, dois peers possuem o mesmo arquivo e um terceiro realiza download em partes paralelas, verificando se os bytes finais são idênticos aos bytes originais. No segundo, um tracker e um peer owner são iniciados localmente; o cliente realiza \texttt{LOOKUP} por nome e depois baixa o arquivo por relay do tracker.
+
+Esses testes exercitam os pontos mais sensíveis do sistema: sockets TCP, varredura de pasta, hash SHA-256, transferência cifrada, remontagem de partes, consulta por nome e relay. Além disso, o projeto inclui um teste de interface que verifica elementos essenciais da tela inicial, como o botão para iniciar o tracker e o ícone de downloads.
+
+Os comandos previstos para verificação do projeto são:
+
+\begin{lstlisting}[caption={Comandos de verificação do projeto.}, label={lst:validacao}]
+flutter analyze
+flutter test
+\end{lstlisting}
+
+\espacofigura{fig:testes}{Inserir aqui um print do terminal com a execução de \texttt{flutter test} e, se desejado, \texttt{flutter analyze}.}{Área reservada para evidência visual da validação automatizada.}
+
+\section{Discussão}
+
+A arquitetura híbrida mostrou-se adequada para o objetivo educacional do trabalho. O tracker simplifica descoberta e estado global, enquanto os peers preservam a distribuição da transferência de arquivos. Essa separação facilita a compreensão dos papéis do sistema: coordenação centralizada para metadados e comunicação distribuída para dados.
+
+O download por partes evidencia o uso de paralelismo no cliente. Mesmo quando há poucos peers, a implementação divide o arquivo em intervalos e usa \texttt{Future.wait} para executar as transferências de forma concorrente. Quando existem múltiplos owners, as partes podem ser distribuídas entre eles. A validação por SHA-256 garante que essa remontagem não altere o conteúdo final.
+
+O relay pelo tracker representa uma decisão de robustez. Em redes reais, conexões diretas podem falhar por NAT, firewall, IP anunciado incorretamente ou indisponibilidade temporária de um peer. Ao permitir que o tracker repasse os bytes, o sistema sacrifica parte da descentralização e aumenta o uso do servidor, mas melhora a chance de concluir o download.
+
+A cifra \texttt{xor-sha256-demo} deve ser entendida como recurso demonstrativo. Ela mostra a ideia de tráfego transformado e reversível, mas não substitui protocolos criptográficos reais. Em uma versão de produção, o caminho adequado seria usar TLS, autenticação de peers, autorização de acesso e negociação segura de chaves.
+
+\section{Limitações e Trabalhos Futuros}
+
+Apesar de funcional, o sistema ainda possui limitações. O tracker mantém estado apenas em memória, portanto os dados são perdidos quando ele é encerrado. Não há autenticação de usuários ou peers, e a cifra implementada é apenas didática. A playlist também não possui persistência, ordenação colaborativa avançada ou resolução de conflitos.
+
+Como trabalhos futuros, destacam-se:
+
+\begin{itemize}
+	\item persistir catálogo, peers recentes e playlist em banco local;
+	\item adicionar TLS e autenticação entre tracker e peers;
+	\item implementar descoberta automática em rede local;
+	\item permitir remoção e reordenação colaborativa da playlist;
+	\item medir desempenho com arquivos maiores, múltiplos peers e redes distintas;
+	\item melhorar tolerância a falhas durante downloads parciais;
+	\item criar empacotamento final para distribuição do aplicativo.
+\end{itemize}
+
+\section{Conclusão}
+
+O Video Party P2P cumpriu o objetivo de demonstrar, de forma prática, conceitos importantes de sistemas distribuídos. A aplicação combina comunicação TCP, protocolo de mensagens, tracker, peers, transferência direta, relay, paralelismo, verificação de integridade e interface gráfica em um único sistema funcional.
+
+A solução evidencia como uma arquitetura P2P híbrida pode equilibrar simplicidade de coordenação e distribuição de carga. O tracker organiza a rede e a playlist, mas os peers continuam responsáveis por armazenar e entregar os vídeos. A validação por SHA-256 e os testes automatizados reforçam a confiabilidade da transferência, enquanto o prefetch e o player integrado aproximam o protótipo de uma experiência real de uso.
+
+Assim, o trabalho vai além de uma prova de conceito isolada: ele materializa os pilares da disciplina em um aplicativo executável, observável e extensível, servindo como base para discussões sobre escalabilidade, confiabilidade, segurança e projeto de protocolos distribuídos.
+
+\newpage
+\bibliography{referencias}
+
+\end{document}
