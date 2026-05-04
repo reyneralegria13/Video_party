@@ -138,6 +138,9 @@ class DownloadProgress {
     required this.receivedBytes,
     required this.totalBytes,
     required this.status,
+    this.bytesPerSecond = 0,
+    this.estimatedRemaining,
+    this.speedSamples = const [],
   });
 
   final String hash;
@@ -145,6 +148,9 @@ class DownloadProgress {
   final int receivedBytes;
   final int totalBytes;
   final String status;
+  final double bytesPerSecond;
+  final Duration? estimatedRemaining;
+  final List<DownloadSpeedSample> speedSamples;
 
   double get progress {
     if (totalBytes <= 0) {
@@ -152,6 +158,37 @@ class DownloadProgress {
     }
     return (receivedBytes / totalBytes).clamp(0, 1);
   }
+
+  bool get isComplete => progress >= 1 || status == 'concluido';
+
+  DownloadProgress copyWith({
+    String? hash,
+    String? title,
+    int? receivedBytes,
+    int? totalBytes,
+    String? status,
+    double? bytesPerSecond,
+    Duration? estimatedRemaining,
+    List<DownloadSpeedSample>? speedSamples,
+  }) {
+    return DownloadProgress(
+      hash: hash ?? this.hash,
+      title: title ?? this.title,
+      receivedBytes: receivedBytes ?? this.receivedBytes,
+      totalBytes: totalBytes ?? this.totalBytes,
+      status: status ?? this.status,
+      bytesPerSecond: bytesPerSecond ?? this.bytesPerSecond,
+      estimatedRemaining: estimatedRemaining ?? this.estimatedRemaining,
+      speedSamples: speedSamples ?? this.speedSamples,
+    );
+  }
+}
+
+class DownloadSpeedSample {
+  const DownloadSpeedSample({required this.at, required this.bytesPerSecond});
+
+  final DateTime at;
+  final double bytesPerSecond;
 }
 
 String encodeMessage(Map<String, Object?> message) =>
@@ -166,6 +203,25 @@ String formatBytes(int bytes) {
     unit++;
   }
   return '${value.toStringAsFixed(value >= 10 || unit == 0 ? 0 : 1)} ${units[unit]}';
+}
+
+String formatRate(double bytesPerSecond) =>
+    '${formatBytes(bytesPerSecond.round())}/s';
+
+String formatShortDuration(Duration duration) {
+  if (duration <= Duration.zero) {
+    return 'agora';
+  }
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  }
+  if (minutes > 0) {
+    return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
+  }
+  return '${seconds}s';
 }
 
 String safeFileName(String value) => value

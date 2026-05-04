@@ -1112,6 +1112,8 @@ class _RightPanel extends StatelessWidget {
               );
             }),
           const SizedBox(height: 18),
+          _DownloadStatsPanel(controller: controller),
+          const SizedBox(height: 18),
           _PanelTitle(
             key: peersKey,
             icon: Icons.group_rounded,
@@ -1178,6 +1180,222 @@ class _PanelTitle extends StatelessWidget {
   }
 }
 
+class _DownloadStatsPanel extends StatelessWidget {
+  const _DownloadStatsPanel({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final downloads = controller.downloads.values.toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    final active = downloads.where((item) => !item.isComplete).toList();
+    final totalReceived = downloads.fold<int>(
+      0,
+      (total, item) => total + item.receivedBytes,
+    );
+    final totalBytes = downloads.fold<int>(
+      0,
+      (total, item) => total + item.totalBytes,
+    );
+    final totalSpeed = active.fold<double>(
+      0,
+      (total, item) => total + item.bytesPerSecond,
+    );
+    final remainingBytes = active.fold<int>(
+      0,
+      (total, item) => total + (item.totalBytes - item.receivedBytes),
+    );
+    final eta = totalSpeed > 1
+        ? Duration(seconds: (remainingBytes / totalSpeed).ceil())
+        : null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PanelTitle(
+          icon: Icons.monitor_heart_rounded,
+          title: 'Downloads',
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _MetricTile(label: 'Ativos', value: '${active.length}'),
+            _MetricTile(label: 'Velocidade', value: formatRate(totalSpeed)),
+            _MetricTile(
+              label: 'Baixado',
+              value:
+                  '${formatBytes(totalReceived)} / ${formatBytes(totalBytes)}',
+            ),
+            _MetricTile(
+              label: 'Termino',
+              value: eta == null ? '--' : formatShortDuration(eta),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (downloads.isEmpty)
+          const _EmptyState(
+            icon: Icons.speed_rounded,
+            text: 'Sem downloads registrados.',
+          )
+        else
+          ...downloads.map((progress) => _DownloadCard(progress: progress)),
+      ],
+    );
+  }
+}
+
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 152,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: context.raisedBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(color: context.textSubtle, fontSize: 11),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DownloadCard extends StatelessWidget {
+  const _DownloadCard({required this.progress});
+
+  final DownloadProgress progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final percent = (progress.progress * 100).clamp(0, 100);
+    final eta = progress.estimatedRemaining;
+    final status = progress.isComplete
+        ? 'concluido'
+        : eta == null
+        ? 'calculando'
+        : 'termina em ${formatShortDuration(eta)}';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: context.rowBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.cloud_download_rounded,
+                color: context.secondaryAccent,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  progress.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                '${percent.toStringAsFixed(0)}%',
+                style: TextStyle(color: context.textMuted, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          LinearProgressIndicator(
+            value: progress.progress,
+            minHeight: 5,
+            color: progress.isComplete
+                ? context.primaryAccent
+                : context.warningAccent,
+            backgroundColor: context.borderStrongColor,
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 54,
+            child: CustomPaint(
+              painter: _SpeedChartPainter(
+                samples: progress.speedSamples,
+                lineColor: context.secondaryAccent,
+                fillColor: context.secondaryAccent.withValues(alpha: 0.16),
+                gridColor: context.borderColor,
+              ),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            children: [
+              _InlineStat(
+                icon: Icons.speed_rounded,
+                text: formatRate(progress.bytesPerSecond),
+              ),
+              _InlineStat(icon: Icons.schedule_rounded, text: status),
+              _InlineStat(
+                icon: Icons.storage_rounded,
+                text:
+                    '${formatBytes(progress.receivedBytes)} / ${formatBytes(progress.totalBytes)}',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineStat extends StatelessWidget {
+  const _InlineStat({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: context.textSubtle),
+        const SizedBox(width: 4),
+        Text(text, style: TextStyle(color: context.textMuted, fontSize: 12)),
+      ],
+    );
+  }
+}
+
 class _PlaylistRow extends StatelessWidget {
   const _PlaylistRow({
     required this.entry,
@@ -1228,7 +1446,7 @@ class _PlaylistRow extends StatelessWidget {
                     Text(
                       local
                           ? 'Pronto localmente'
-                          : progress?.status ?? 'Disponivel na rede',
+                          : _downloadStatus(progress) ?? 'Disponivel na rede',
                       style: TextStyle(color: context.textSubtle, fontSize: 12),
                     ),
                   ],
@@ -1252,6 +1470,105 @@ class _PlaylistRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String? _downloadStatus(DownloadProgress? progress) {
+    if (progress == null) {
+      return null;
+    }
+    if (progress.isComplete) {
+      return 'Download concluido';
+    }
+    final eta = progress.estimatedRemaining;
+    final etaText = eta == null ? 'ETA calculando' : formatShortDuration(eta);
+    return '${progress.status} - ${formatRate(progress.bytesPerSecond)} - $etaText';
+  }
+}
+
+class _SpeedChartPainter extends CustomPainter {
+  const _SpeedChartPainter({
+    required this.samples,
+    required this.lineColor,
+    required this.fillColor,
+    required this.gridColor,
+  });
+
+  final List<DownloadSpeedSample> samples;
+  final Color lineColor;
+  final Color fillColor;
+  final Color gridColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    for (var i = 1; i <= 2; i++) {
+      final y = size.height * i / 3;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    if (samples.length < 2) {
+      final idlePaint = Paint()
+        ..color = gridColor
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(0, size.height - 1),
+        Offset(size.width, size.height - 1),
+        idlePaint,
+      );
+      return;
+    }
+
+    var maxSpeed = 1.0;
+    for (final sample in samples) {
+      if (sample.bytesPerSecond > maxSpeed) {
+        maxSpeed = sample.bytesPerSecond;
+      }
+    }
+
+    final line = Path();
+    final fill = Path();
+    for (var i = 0; i < samples.length; i++) {
+      final x = samples.length == 1
+          ? 0.0
+          : size.width * i / (samples.length - 1);
+      final normalized = (samples[i].bytesPerSecond / maxSpeed)
+          .clamp(0, 1)
+          .toDouble();
+      final y = size.height - (normalized * (size.height - 4)) - 2;
+      if (i == 0) {
+        line.moveTo(x, y);
+        fill.moveTo(x, size.height);
+        fill.lineTo(x, y);
+      } else {
+        line.lineTo(x, y);
+        fill.lineTo(x, y);
+      }
+    }
+    fill
+      ..lineTo(size.width, size.height)
+      ..close();
+
+    canvas.drawPath(fill, Paint()..color = fillColor);
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = lineColor
+        ..strokeWidth = 2
+        ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _SpeedChartPainter oldDelegate) {
+    return oldDelegate.samples != samples ||
+        oldDelegate.lineColor != lineColor ||
+        oldDelegate.fillColor != fillColor ||
+        oldDelegate.gridColor != gridColor;
   }
 }
 

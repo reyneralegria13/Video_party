@@ -15,6 +15,7 @@ class AppController extends ChangeNotifier {
   AppController() : peer = PeerNode(onLog: _pendingLog) {
     _pendingController = this;
     _downloadDirectory = Directory(_defaultDownloadPath());
+    _configurePeer();
   }
 
   static AppController? _pendingController;
@@ -36,7 +37,9 @@ class AppController extends ChangeNotifier {
   TrackerSnapshot snapshot = TrackerSnapshot.empty();
   final List<String> logs = [];
   final Map<String, DownloadProgress> downloads = {};
+  final Map<String, _DownloadTelemetry> _downloadTelemetry = {};
   final Set<String> _prefetching = {};
+  bool _registered = false;
 
   String peerName = 'DJ Video';
   String trackerHost = '127.0.0.1';
@@ -66,6 +69,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> startPeerServer() async {
+    _configurePeer();
     await peer.startUploadServer(host: '0.0.0.0', port: uploadPort);
     notifyListeners();
   }
@@ -80,6 +84,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> register() async {
+    _configurePeer();
     snapshot = await peer.register(
       trackerHost: trackerHost.trim(),
       trackerPort: trackerPort,
@@ -87,7 +92,16 @@ class AppController extends ChangeNotifier {
       advertisedHost: advertisedHost.trim(),
       advertisedPort: uploadPort,
     );
+    _registered = true;
     _log('Registro atualizado no tracker.');
+    final replicas = await peer.ensureReplication(
+      trackerHost: trackerHost.trim(),
+      trackerPort: trackerPort,
+    );
+    if (replicas > 0) {
+      _log('$replicas replica(s) voluntaria(s) criada(s).');
+      await refresh();
+    }
     notifyListeners();
   }
 
@@ -209,12 +223,14 @@ class AppController extends ChangeNotifier {
     if (peers.isEmpty) {
       throw StateError('Nenhum peer remoto possui "${entry.title}".');
     }
-    downloads[entry.hash] = DownloadProgress(
-      hash: entry.hash,
-      title: entry.title,
-      receivedBytes: 0,
-      totalBytes: video.size,
-      status: reason,
+    _setDownloadProgress(
+      DownloadProgress(
+        hash: entry.hash,
+        title: entry.title,
+        receivedBytes: 0,
+        totalBytes: video.size,
+        status: reason,
+      ),
     );
     notifyListeners();
     try {
@@ -223,22 +239,27 @@ class AppController extends ChangeNotifier {
         video: video,
         outputDirectory: _downloadDirectory,
         onProgress: (progress) {
-          downloads[entry.hash] = progress;
+          _setDownloadProgress(progress);
           notifyListeners();
         },
       );
     } on Object catch (error) {
       _log('Download direto falhou: $error');
-      await peer.downloadViaTrackerRelay(
-        trackerHost: trackerHost.trim(),
-        trackerPort: trackerPort,
-        video: video,
-        outputDirectory: _downloadDirectory,
-        onProgress: (progress) {
-          downloads[entry.hash] = progress;
-          notifyListeners();
-        },
-      );
+      try {
+        await _retryDirectDownload(video);
+      } on Object catch (retryError) {
+        _log('Retry direto falhou: $retryError');
+        await peer.downloadViaTrackerRelay(
+          trackerHost: trackerHost.trim(),
+          trackerPort: trackerPort,
+          video: video,
+          outputDirectory: _downloadDirectory,
+          onProgress: (progress) {
+            _setDownloadProgress(progress);
+            notifyListeners();
+          },
+        );
+      }
     }
     await register();
   }
@@ -257,6 +278,7 @@ class AppController extends ChangeNotifier {
     this.advertisedHost = advertisedHost ?? this.advertisedHost;
     this.uploadPort = uploadPort ?? this.uploadPort;
     this.folderPath = folderPath ?? this.folderPath;
+    _configurePeer();
   }
 
   void updateVisualTheme(AppVisualTheme value) {
@@ -269,6 +291,66 @@ class AppController extends ChangeNotifier {
       snapshot = tracker!.snapshot();
       notifyListeners();
     }
+  }
+
+  Future<void> _retryDirectDownload(VideoItem video) async {
+    final tried = <String>{};
+    while (true) {
+      final response = await requestTracker(trackerHost.trim(), trackerPort, {
+        'type': 'DOWNLOAD',
+        'hash': video.hash,
+      });
+      if (response['ok'] != true) {
+        throw StateError(response['error'] as String? ?? 'Lookup falhou');
+      }
+      final candidates = (response['peers'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => PeerInfo.fromJson(item.cast<String, Object?>()))
+          .where((candidate) => candidate.id != peer.id)
+          .where((candidate) => !tried.contains(candidate.id))
+          .toList();
+      if (candidates.isEmpty) {
+        throw StateError('Nenhum peer alternativo respondeu ao tracker.');
+      }
+      for (final candidate in candidates) {
+        tried.add(candidate.id);
+        try {
+          _log('Tentando outro peer: ${candidate.name}');
+          await peer.downloadFromPeers(
+            peers: [candidate],
+            video: video,
+            outputDirectory: _downloadDirectory,
+            onProgress: (progress) {
+              _setDownloadProgress(progress);
+              notifyListeners();
+            },
+          );
+          return;
+        } on Object catch (error) {
+          _log('${candidate.name} tambem falhou: $error');
+        }
+      }
+    }
+  }
+
+  void _configurePeer() {
+    peer.configure(
+      storageDirectory: _downloadDirectory,
+      trackerHost: trackerHost.trim(),
+      trackerPort: trackerPort,
+      peerName: peerName.trim().isEmpty ? 'Peer sem nome' : peerName.trim(),
+      advertisedHost: advertisedHost.trim(),
+      advertisedPort: uploadPort,
+    );
+  }
+
+  void _setDownloadProgress(DownloadProgress progress) {
+    final now = DateTime.now();
+    final telemetry = _downloadTelemetry.putIfAbsent(
+      progress.hash,
+      () => _DownloadTelemetry(now, progress.receivedBytes),
+    );
+    downloads[progress.hash] = telemetry.apply(progress, now);
   }
 
   void _log(String message) {
@@ -334,6 +416,21 @@ class AppController extends ChangeNotifier {
     return '$home${Platform.pathSeparator}VideoPartyDownloads';
   }
 
+  Future<void> _unregisterQuietly() async {
+    if (!_registered) {
+      return;
+    }
+    try {
+      await peer.unregister(
+        trackerHost: trackerHost.trim(),
+        trackerPort: trackerPort,
+      );
+      _registered = false;
+    } on Object {
+      // O app pode fechar sem tracker ativo; o heartbeat cobre esse caso.
+    }
+  }
+
   @override
   void dispose() {
     unawaited(_positionSubscription?.cancel());
@@ -341,8 +438,71 @@ class AppController extends ChangeNotifier {
     unawaited(_playingSubscription?.cancel());
     unawaited(_completedSubscription?.cancel());
     unawaited(_player?.dispose());
+    unawaited(_unregisterQuietly());
     unawaited(peer.stopUploadServer());
     unawaited(tracker?.stop());
     super.dispose();
+  }
+}
+
+class _DownloadTelemetry {
+  _DownloadTelemetry(this.lastAt, this.lastBytes) : lastSampleAt = lastAt;
+
+  static const _maxSamples = 28;
+
+  DateTime lastAt;
+  DateTime lastSampleAt;
+  int lastBytes;
+  double lastSpeed = 0;
+  final List<DownloadSpeedSample> samples = [];
+
+  DownloadProgress apply(DownloadProgress progress, DateTime now) {
+    if (progress.receivedBytes < lastBytes) {
+      samples.clear();
+      lastSpeed = 0;
+      lastBytes = progress.receivedBytes;
+      lastAt = now;
+      lastSampleAt = now;
+    }
+
+    final elapsed = now.difference(lastAt);
+    var speed = lastSpeed;
+    if (elapsed.inMilliseconds > 0 && progress.receivedBytes >= lastBytes) {
+      final byteDelta = progress.receivedBytes - lastBytes;
+      final instantSpeed = byteDelta * 1000 / elapsed.inMilliseconds;
+      speed = lastSpeed == 0
+          ? instantSpeed
+          : (lastSpeed * 0.65) + (instantSpeed * 0.35);
+    }
+
+    final shouldSample =
+        samples.isEmpty ||
+        now.difference(lastSampleAt) >= const Duration(milliseconds: 500) ||
+        progress.isComplete;
+    if (shouldSample) {
+      samples.add(DownloadSpeedSample(at: now, bytesPerSecond: speed));
+      if (samples.length > _maxSamples) {
+        samples.removeRange(0, samples.length - _maxSamples);
+      }
+      lastSampleAt = now;
+    }
+
+    lastAt = now;
+    lastBytes = progress.receivedBytes;
+    lastSpeed = speed;
+
+    Duration? eta;
+    if (progress.isComplete) {
+      eta = Duration.zero;
+    } else if (speed > 1 && progress.totalBytes > progress.receivedBytes) {
+      final remainingBytes = progress.totalBytes - progress.receivedBytes;
+      eta = Duration(seconds: (remainingBytes / speed).ceil());
+    }
+
+    return progress.copyWith(
+      bytesPerSecond: speed,
+      estimatedRemaining: eta,
+      speedSamples: List.unmodifiable(samples),
+    );
   }
 }

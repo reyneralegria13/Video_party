@@ -11,7 +11,9 @@ typedef ProgressWriter = void Function(DownloadProgress progress);
 typedef LogWriter = void Function(String message);
 
 const _maxParallelDownloads = 4;
+const _transferBlockSize = 1024;
 const _simplePeerCipherKey = 'video-party-p2p-demo-key';
+const defaultReplicaCount = 2;
 
 class PeerNode {
   PeerNode({required this.onLog});
@@ -22,9 +24,31 @@ class PeerNode {
 
   ServerSocket? _uploadServer;
   List<VideoItem> _library = [];
+  Directory? _storageDirectory;
+  String? _trackerHost;
+  int? _trackerPort;
+  String? _peerName;
+  String? _advertisedHost;
+  int? _advertisedPort;
 
   List<VideoItem> get library => List.unmodifiable(_library);
   bool get isServing => _uploadServer != null;
+
+  void configure({
+    Directory? storageDirectory,
+    String? trackerHost,
+    int? trackerPort,
+    String? peerName,
+    String? advertisedHost,
+    int? advertisedPort,
+  }) {
+    _storageDirectory = storageDirectory ?? _storageDirectory;
+    _trackerHost = trackerHost ?? _trackerHost;
+    _trackerPort = trackerPort ?? _trackerPort;
+    _peerName = peerName ?? _peerName;
+    _advertisedHost = advertisedHost ?? _advertisedHost;
+    _advertisedPort = advertisedPort ?? _advertisedPort;
+  }
 
   Future<void> startUploadServer({
     required String host,
@@ -80,6 +104,13 @@ class PeerNode {
     required String advertisedHost,
     required int advertisedPort,
   }) async {
+    configure(
+      trackerHost: trackerHost,
+      trackerPort: trackerPort,
+      peerName: peerName,
+      advertisedHost: advertisedHost,
+      advertisedPort: advertisedPort,
+    );
     final response = await requestTracker(trackerHost, trackerPort, {
       'type': 'REGISTER',
       'peer': {
@@ -96,6 +127,115 @@ class PeerNode {
     return TrackerSnapshot.fromJson(
       (response['snapshot'] as Map).cast<String, Object?>(),
     );
+  }
+
+  Future<void> unregister({
+    required String trackerHost,
+    required int trackerPort,
+  }) async {
+    final response = await requestTracker(trackerHost, trackerPort, {
+      'type': 'UNREGISTER',
+      'peerId': id,
+    });
+    if (response['ok'] != true) {
+      throw StateError(response['error'] as String? ?? 'Falha ao desregistrar');
+    }
+  }
+
+  Future<int> ensureReplication({
+    required String trackerHost,
+    required int trackerPort,
+    int replicaCount = defaultReplicaCount,
+  }) async {
+    var stored = 0;
+    for (final video in _library.where((item) => item.isLocal)) {
+      final lookup = await requestTracker(trackerHost, trackerPort, {
+        'type': 'LOOKUP',
+        'hash': video.hash,
+      });
+      if (lookup['ok'] != true) {
+        continue;
+      }
+      final owners = (lookup['peers'] as List? ?? [])
+          .whereType<Map>()
+          .map((item) => PeerInfo.fromJson(item.cast<String, Object?>()))
+          .toList();
+      final ownerIds = owners.map((peer) => peer.id).toSet();
+      final desiredOwners = replicaCount + 1;
+      final missing = desiredOwners - ownerIds.length;
+      if (missing <= 0) {
+        continue;
+      }
+
+      final list = await requestTracker(trackerHost, trackerPort, {
+        'type': 'LIST',
+      });
+      if (list['ok'] != true) {
+        continue;
+      }
+      final snapshot = TrackerSnapshot.fromJson(
+        (list['snapshot'] as Map).cast<String, Object?>(),
+      );
+      final targets = snapshot.peers
+          .where((peer) => peer.id != id && !ownerIds.contains(peer.id))
+          .take(missing)
+          .toList();
+      if (targets.isEmpty) {
+        onLog('Sem peers livres para replicar ${video.name}');
+        continue;
+      }
+
+      stored += await replicateVideoToPeers(video: video, targets: targets);
+    }
+    return stored;
+  }
+
+  Future<int> replicateVideoToPeers({
+    required VideoItem video,
+    required List<PeerInfo> targets,
+  }) async {
+    final source = _selfInfo();
+    var stored = 0;
+    for (final target in targets) {
+      if (target.id == id) {
+        continue;
+      }
+      try {
+        final socket = await Socket.connect(
+          target.host,
+          target.port,
+          timeout: const Duration(seconds: 8),
+        );
+        socket.write(
+          encodeMessage({
+            'type': 'STORE_REPLICA',
+            'video': video.toJson(),
+            'source': source.toJson(),
+            'trackerHost': _trackerHost,
+            'trackerPort': _trackerPort,
+          }),
+        );
+        await socket.flush();
+        final line = await utf8.decoder
+            .bind(socket)
+            .transform(const LineSplitter())
+            .first
+            .timeout(const Duration(hours: 4));
+        await socket.close();
+        final response = jsonDecode(line) as Map<String, Object?>;
+        if (response['ok'] == true) {
+          stored++;
+          onLog('Replica de ${video.name} armazenada em ${target.name}');
+        } else {
+          onLog(
+            'Replica recusada por ${target.name}: ${response['error'] ?? 'erro'}',
+          );
+        }
+      } on Object catch (error) {
+        onLog('Falha ao replicar ${video.name} para ${target.name}: $error');
+      }
+    }
+    return stored;
   }
 
   Future<File> downloadFromPeers({
@@ -371,6 +511,22 @@ class PeerNode {
           .first
           .timeout(const Duration(seconds: 10));
       final request = jsonDecode(line) as Map<String, Object?>;
+      if (request['type'] == 'HEARTBEAT') {
+        socket.write(
+          encodeMessage({'ok': true, 'type': 'HEARTBEAT_ACK', 'peerId': id}),
+        );
+        return;
+      }
+      if (request['type'] == 'STORE_REPLICA') {
+        final response = await _storeReplica(request);
+        socket.write(encodeMessage(response));
+        return;
+      }
+      if (request['type'] == 'REPLICATE_RESOURCE') {
+        final response = await _replicateResource(request);
+        socket.write(encodeMessage(response));
+        return;
+      }
       if (request['type'] != 'GET_FILE') {
         socket.write(encodeMessage({'ok': false, 'error': 'Comando invalido'}));
         return;
@@ -418,12 +574,23 @@ class PeerNode {
       );
       await socket.flush();
       var sent = 0;
-      await for (final chunk in file.openRead(offset, offset + length)) {
-        final payload = encrypted
-            ? _xorCipher(chunk, absoluteOffset: offset + sent)
-            : chunk;
-        socket.add(payload);
-        sent += chunk.length;
+      final input = await file.open();
+      try {
+        await input.setPosition(offset);
+        while (sent < length) {
+          final nextSize = min(_transferBlockSize, length - sent);
+          final chunk = await input.read(nextSize);
+          if (chunk.isEmpty) {
+            break;
+          }
+          final payload = encrypted
+              ? _xorCipher(chunk, absoluteOffset: offset + sent)
+              : chunk;
+          socket.add(payload);
+          sent += chunk.length;
+        }
+      } finally {
+        await input.close();
       }
       await socket.flush();
       onLog(
@@ -437,6 +604,93 @@ class PeerNode {
       await socket.flush();
       await socket.close();
     }
+  }
+
+  Future<Map<String, Object?>> _storeReplica(
+    Map<String, Object?> request,
+  ) async {
+    final storage = _storageDirectory;
+    if (storage == null) {
+      return {'ok': false, 'error': 'Diretorio de replicas nao configurado'};
+    }
+    final video = VideoItem.fromJson(
+      (request['video'] as Map).cast<String, Object?>(),
+    );
+    if (localPathFor(video.hash) != null) {
+      await _registerWithConfiguredTracker();
+      return {'ok': true, 'stored': false, 'alreadyLocal': true};
+    }
+    final source = PeerInfo.fromJson(
+      (request['source'] as Map).cast<String, Object?>(),
+    );
+    configure(
+      trackerHost: request['trackerHost'] as String?,
+      trackerPort: (request['trackerPort'] as num?)?.toInt(),
+    );
+
+    await downloadFromPeers(
+      peers: [source],
+      video: video,
+      outputDirectory: storage,
+      onProgress: (_) {},
+    );
+    await _registerWithConfiguredTracker();
+    return {'ok': true, 'stored': true};
+  }
+
+  Future<Map<String, Object?>> _replicateResource(
+    Map<String, Object?> request,
+  ) async {
+    final video = VideoItem.fromJson(
+      (request['video'] as Map).cast<String, Object?>(),
+    );
+    if (localPathFor(video.hash) == null) {
+      return {'ok': false, 'error': 'Arquivo local indisponivel'};
+    }
+    final targets = (request['targets'] as List? ?? [])
+        .whereType<Map>()
+        .map((item) => PeerInfo.fromJson(item.cast<String, Object?>()))
+        .toList();
+    final stored = await replicateVideoToPeers(video: video, targets: targets);
+    return {'ok': stored == targets.length, 'stored': stored};
+  }
+
+  Future<void> _registerWithConfiguredTracker() async {
+    final trackerHost = _trackerHost;
+    final trackerPort = _trackerPort;
+    final peerName = _peerName;
+    final advertisedHost = _advertisedHost;
+    final advertisedPort = _advertisedPort;
+    if (trackerHost == null ||
+        trackerPort == null ||
+        peerName == null ||
+        advertisedHost == null ||
+        advertisedPort == null) {
+      return;
+    }
+    await register(
+      trackerHost: trackerHost,
+      trackerPort: trackerPort,
+      peerName: peerName,
+      advertisedHost: advertisedHost,
+      advertisedPort: advertisedPort,
+    );
+  }
+
+  PeerInfo _selfInfo() {
+    final peerName = _peerName;
+    final advertisedHost = _advertisedHost;
+    final advertisedPort = _advertisedPort;
+    if (peerName == null || advertisedHost == null || advertisedPort == null) {
+      throw StateError('Peer nao configurado para replicacao');
+    }
+    return PeerInfo(
+      id: id,
+      name: peerName,
+      host: advertisedHost,
+      port: advertisedPort,
+      lastSeen: DateTime.now(),
+    );
   }
 
   void _mergeLibrary(List<VideoItem> incoming) {

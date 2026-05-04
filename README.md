@@ -7,6 +7,8 @@ Aplicativo Flutter para a disciplina de Sistemas Distribuidos. Ele implementa um
 - Downloads acontecem diretamente entre peers e podem ser divididos em partes paralelas.
 - O trafego de arquivo entre peers usa uma cifra simples `xor-sha256-demo` para fins didaticos.
 - Se o acesso direto falhar, o app tenta um relay de download pelo tracker.
+- Ao publicar arquivos, o peer tenta criar replicas voluntarias em outros 2 peers disponiveis.
+- Se uma replica cair, o heartbeat do tracker remove o peer e solicita re-replicacao para manter o numero de copias.
 - Ao reproduzir um item da playlist, o app toca o arquivo local com `media_kit` e inicia prefetch do proximo video em segundo plano.
 - A interface permite escolher entre tema padrao escuro, tema branco ou tema seguindo o sistema.
 
@@ -48,11 +50,23 @@ flutter run -d linux
    - `Meu IP/Tailscale`: IP Tailscale da maquina B.
    - `Pasta de videos`: outra pasta local, se houver.
 6. Na maquina B, clique em **Ativar upload**, **Escanear e registrar** e **Atualizar rede**.
-7. Qualquer peer pode adicionar videos ao **Catalogo global** para montar a **Playlist global**.
-8. Ao tocar um video, o app baixa o atual se necessario e faz prefetch do proximo item.
-9. Depois do download, o player embutido reproduz o arquivo local na area principal.
+7. Para demonstrar replicacao voluntaria, deixe ao menos tres peers registrados antes de publicar uma pasta com videos. Ao registrar, o dono tenta copiar cada arquivo para outros 2 peers.
+8. Qualquer peer pode adicionar videos ao **Catalogo global** para montar a **Playlist global**.
+9. Ao tocar um video, o app baixa o atual se necessario e faz prefetch do proximo item.
+10. Depois do download, o player embutido reproduz o arquivo local na area principal.
 
 Os arquivos baixados ficam em `VideoPartyDownloads` dentro da pasta do usuario.
+
+## Mapeamento dos comandos do trabalho
+
+A entrega usa GUI, mas os comandos da rubrica existem como acoes/protocolo:
+
+- `publish <caminho_do_arquivo>`: informe a pasta em **Pasta de videos** e clique em **Escanear e registrar**. O registro publica os arquivos e tenta replicar em outros 2 peers.
+- `search <palavra>`: protocolo `SEARCH`, que busca por substring no tracker.
+- `WHEREIS <nome_do_recurso>`: protocolo textual aceito pelo tracker e alias JSON `WHEREIS`.
+- `download <nome_do_recurso> <ip:porta_do_peer>`: o app baixa direto por `GET_FILE` via TCP. Se o peer cair, reconsulta o tracker, tenta outro peer e depois usa relay.
+- `list_local`: a biblioteca local aparece no painel **Biblioteca local**.
+- `exit`: ao fechar, o cliente envia `UNREGISTER`; se a saida for abrupta, o heartbeat remove o peer.
 
 ## Protocolo JSON/TCP
 
@@ -74,6 +88,32 @@ Cada comando de controle e uma linha JSON terminada por `\n`.
 
 ```json
 {"type": "LIST"}
+```
+
+`UNREGISTER`
+
+```json
+{"type": "UNREGISTER", "peerId": "peer-1"}
+```
+
+`WHEREIS`
+
+Formato textual:
+
+```text
+WHEREIS show.mp4
+```
+
+Formato JSON:
+
+```json
+{"type": "WHEREIS", "name": "show.mp4"}
+```
+
+`SEARCH`
+
+```json
+{"type": "SEARCH", "query": "show"}
 ```
 
 `ADD_PLAYLIST`
@@ -110,7 +150,22 @@ Usado como fallback quando um peer nao consegue abrir conexao direta com outro. 
 {"type": "RELAY_DOWNLOAD", "hash": "sha256", "requesterId": "peer-2", "offset": 0, "length": 1048576, "encrypted": true}
 ```
 
+O tracker tambem envia `HEARTBEAT` periodicamente aos peers registrados. Quem nao responder com `HEARTBEAT_ACK` e removido da lista de peers e deixa de aparecer como owner dos videos.
+Quando um recurso fica com menos copias do que o alvo possivel na rede, o tracker envia `REPLICATE_RESOURCE` para um owner ativo.
+
 ### Peer
+
+`HEARTBEAT`
+
+```json
+{"type": "HEARTBEAT", "peerId": "peer-1"}
+```
+
+Resposta:
+
+```json
+{"ok": true, "type": "HEARTBEAT_ACK", "peerId": "peer-1"}
+```
 
 O download direto usa `GET_FILE`. O peer responde primeiro com um cabecalho JSON e depois envia os bytes do intervalo pedido no mesmo socket.
 
@@ -124,7 +179,33 @@ Resposta:
 {"ok": true, "name": "show.mp4", "size": 104857600, "offset": 0, "length": 1048576, "encrypted": true, "cipher": "xor-sha256-demo"}
 ```
 
-O cliente divide o arquivo em ate quatro partes, baixa de peers diferentes quando disponiveis, remonta o arquivo localmente e valida o SHA-256 final antes de registrar o novo owner no tracker.
+O peer envia o arquivo em blocos de ate 1024 bytes. O cliente divide o arquivo em ate quatro partes, baixa de peers diferentes quando disponiveis, remonta o arquivo localmente e valida o SHA-256 final antes de registrar o novo owner no tracker.
+
+`STORE_REPLICA`
+
+Um peer owner pede a outro peer para guardar uma replica. O peer destino puxa o arquivo do owner via `GET_FILE`, salva em `VideoPartyDownloads` e registra a nova copia no tracker.
+
+```json
+{
+  "type": "STORE_REPLICA",
+  "video": {"name": "show.mp4", "hash": "sha256", "size": 104857600},
+  "source": {"id": "peer-1", "name": "DJ Video", "host": "100.x.x.x", "port": 5051},
+  "trackerHost": "100.x.x.x",
+  "trackerPort": 4040
+}
+```
+
+`REPLICATE_RESOURCE`
+
+Usado pelo tracker para reparar replicas apos falha detectada por heartbeat.
+
+```json
+{
+  "type": "REPLICATE_RESOURCE",
+  "video": {"name": "show.mp4", "hash": "sha256", "size": 104857600},
+  "targets": [{"id": "peer-3", "name": "Peer 3", "host": "100.x.x.y", "port": 5051}]
+}
+```
 
 ## Validacao
 

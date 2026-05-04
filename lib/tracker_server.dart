@@ -8,12 +8,24 @@ import 'models.dart';
 typedef LogWriter = void Function(String message);
 
 class TrackerServer {
-  TrackerServer({required this.onLog, required this.onChanged});
+  TrackerServer({
+    required this.onLog,
+    required this.onChanged,
+    this.heartbeatInterval = const Duration(seconds: 30),
+    this.heartbeatTimeout = const Duration(seconds: 5),
+    this.replicaCount = 2,
+  });
 
   final LogWriter onLog;
   final VoidCallback onChanged;
+  final Duration heartbeatInterval;
+  final Duration heartbeatTimeout;
+  final int replicaCount;
 
   ServerSocket? _server;
+  Timer? _heartbeatTimer;
+  bool _heartbeatRunning = false;
+  bool _repairRunning = false;
   final Map<String, VideoItem> _videos = {};
   final Map<String, PeerInfo> _peers = {};
   final Map<String, Set<String>> _ownersByHash = {};
@@ -32,9 +44,14 @@ class TrackerServer {
       onError: (Object error) => onLog('Erro no tracker: $error'),
       onDone: () => onLog('Tracker finalizado'),
     );
+    _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) {
+      unawaited(_checkPeerHeartbeats());
+    });
   }
 
   Future<void> stop() async {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
     await _server?.close();
     _server = null;
     onLog('Tracker parado');
@@ -55,7 +72,7 @@ class TrackerServer {
           .transform(const LineSplitter())
           .first
           .timeout(const Duration(seconds: 10));
-      final request = jsonDecode(line) as Map<String, Object?>;
+      final request = _decodeRequestLine(line);
       if (request['type'] == 'RELAY_DOWNLOAD') {
         await _relayDownload(request, socket);
         return;
@@ -74,16 +91,39 @@ class TrackerServer {
     switch (request['type']) {
       case 'REGISTER':
         return _register(request);
+      case 'UNREGISTER':
+        return _unregister(request);
       case 'LIST':
         return {'ok': true, 'snapshot': snapshotJson()};
+      case 'WHEREIS':
       case 'LOOKUP':
       case 'DOWNLOAD':
         return _lookup(request);
+      case 'SEARCH':
+        return _search(request);
       case 'ADD_PLAYLIST':
         return _addPlaylist(request);
       default:
         return {'ok': false, 'error': 'Comando desconhecido'};
     }
+  }
+
+  Map<String, Object?> _decodeRequestLine(String line) {
+    final trimmed = line.trim();
+    if (trimmed.startsWith('{')) {
+      return (jsonDecode(trimmed) as Map).cast<String, Object?>();
+    }
+    final firstSpace = trimmed.indexOf(' ');
+    final command =
+        (firstSpace == -1 ? trimmed : trimmed.substring(0, firstSpace))
+            .toUpperCase();
+    final argument = firstSpace == -1 ? '' : trimmed.substring(firstSpace + 1);
+    return switch (command) {
+      'WHEREIS' => {'type': 'WHEREIS', 'name': argument},
+      'SEARCH' => {'type': 'SEARCH', 'query': argument},
+      'LIST' => {'type': 'LIST'},
+      _ => {'type': command, 'name': argument},
+    };
   }
 
   Future<void> _relayDownload(
@@ -269,6 +309,22 @@ class TrackerServer {
     return {'ok': true, 'snapshot': snapshotJson()};
   }
 
+  Map<String, Object?> _unregister(Map<String, Object?> request) {
+    final peerId = request['peerId'] as String? ?? '';
+    if (peerId.isEmpty) {
+      return {'ok': false, 'error': 'peerId obrigatorio'};
+    }
+    final removed = _peers[peerId];
+    if (removed == null) {
+      return {'ok': true, 'removed': false, 'snapshot': snapshotJson()};
+    }
+    _removePeer(peerId);
+    onLog('${removed.name} desregistrou do tracker');
+    onChanged();
+    unawaited(_repairUnderReplicatedVideos());
+    return {'ok': true, 'removed': true, 'snapshot': snapshotJson()};
+  }
+
   Map<String, Object?> _lookup(Map<String, Object?> request) {
     final hash = request['hash'] as String? ?? '';
     if (hash.isNotEmpty) {
@@ -311,6 +367,29 @@ class TrackerServer {
     return _lookupHash(match.hash);
   }
 
+  Map<String, Object?> _search(Map<String, Object?> request) {
+    final query =
+        (request['query'] as String? ?? request['name'] as String? ?? '')
+            .trim()
+            .toLowerCase();
+    if (query.isEmpty) {
+      return {'ok': false, 'error': 'Informe uma palavra para buscar'};
+    }
+    final results = <Map<String, Object?>>[];
+    for (final video in _videos.values) {
+      if (!video.name.toLowerCase().contains(query)) {
+        continue;
+      }
+      final owners = _ownersByHash[video.hash] ?? const <String>{};
+      final peers = owners.map((id) => _peers[id]).whereType<PeerInfo>();
+      results.add({
+        'video': video.toJson(),
+        'peers': peers.map((peer) => peer.toJson()).toList(),
+      });
+    }
+    return {'ok': true, 'results': results};
+  }
+
   Map<String, Object?> _addPlaylist(Map<String, Object?> request) {
     final hash = request['hash'] as String? ?? '';
     final video = _videos[hash];
@@ -337,6 +416,172 @@ class TrackerServer {
       'peers': data.peers.map((item) => item.toJson()).toList(),
       'playlist': data.playlist.map((item) => item.toJson()).toList(),
     };
+  }
+
+  Future<void> _checkPeerHeartbeats() async {
+    if (_heartbeatRunning || _peers.isEmpty) {
+      return;
+    }
+    _heartbeatRunning = true;
+    var changed = false;
+    try {
+      final peers = List<PeerInfo>.from(_peers.values);
+      for (final peer in peers) {
+        if (_peers[peer.id] == null) {
+          continue;
+        }
+        final alive = await _sendHeartbeat(peer);
+        if (alive) {
+          final current = _peers[peer.id];
+          if (current != null) {
+            _peers[peer.id] = PeerInfo(
+              id: current.id,
+              name: current.name,
+              host: current.host,
+              port: current.port,
+              lastSeen: DateTime.now(),
+            );
+          }
+          continue;
+        }
+        _removePeer(peer.id);
+        changed = true;
+        onLog('${peer.name} removido: heartbeat sem resposta');
+      }
+    } finally {
+      _heartbeatRunning = false;
+    }
+    if (changed) {
+      onChanged();
+      unawaited(_repairUnderReplicatedVideos());
+    }
+  }
+
+  Future<bool> _sendHeartbeat(PeerInfo peer) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        peer.host,
+        peer.port,
+        timeout: heartbeatTimeout,
+      );
+      socket.write(encodeMessage({'type': 'HEARTBEAT', 'peerId': peer.id}));
+      await socket.flush();
+      final line = await utf8.decoder
+          .bind(socket)
+          .transform(const LineSplitter())
+          .first
+          .timeout(heartbeatTimeout);
+      final response = jsonDecode(line) as Map<String, Object?>;
+      return response['ok'] == true &&
+          response['type'] == 'HEARTBEAT_ACK' &&
+          response['peerId'] == peer.id;
+    } on Object {
+      return false;
+    } finally {
+      socket?.destroy();
+    }
+  }
+
+  void _removePeer(String peerId) {
+    _peers.remove(peerId);
+    final hashesWithoutOwners = <String>[];
+    for (final entry in _ownersByHash.entries) {
+      entry.value.remove(peerId);
+      if (entry.value.isEmpty) {
+        hashesWithoutOwners.add(entry.key);
+      }
+    }
+    for (final hash in hashesWithoutOwners) {
+      _ownersByHash.remove(hash);
+      _videos.remove(hash);
+    }
+  }
+
+  Future<void> _repairUnderReplicatedVideos() async {
+    if (_repairRunning || _peers.isEmpty) {
+      return;
+    }
+    _repairRunning = true;
+    try {
+      final desiredOwners = replicaCount + 1;
+      final videos = List<VideoItem>.from(_videos.values);
+      for (final video in videos) {
+        final ownerIds = Set<String>.from(_ownersByHash[video.hash] ?? {});
+        ownerIds.removeWhere((id) => !_peers.containsKey(id));
+        if (ownerIds.isEmpty) {
+          _ownersByHash.remove(video.hash);
+          _videos.remove(video.hash);
+          continue;
+        }
+        final desiredForNetwork = min(desiredOwners, _peers.length);
+        final missing = desiredForNetwork - ownerIds.length;
+        if (missing <= 0) {
+          continue;
+        }
+        final targets = _peers.values
+            .where((peer) => !ownerIds.contains(peer.id))
+            .take(missing)
+            .toList();
+        if (targets.isEmpty) {
+          continue;
+        }
+        final owners = ownerIds.map((id) => _peers[id]).whereType<PeerInfo>();
+        for (final owner in owners) {
+          final accepted = await _requestReplication(
+            owner: owner,
+            video: video,
+            targets: targets,
+          );
+          if (accepted) {
+            break;
+          }
+        }
+      }
+    } finally {
+      _repairRunning = false;
+    }
+  }
+
+  Future<bool> _requestReplication({
+    required PeerInfo owner,
+    required VideoItem video,
+    required List<PeerInfo> targets,
+  }) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(
+        owner.host,
+        owner.port,
+        timeout: const Duration(seconds: 8),
+      );
+      socket.write(
+        encodeMessage({
+          'type': 'REPLICATE_RESOURCE',
+          'video': video.toJson(),
+          'targets': targets.map((peer) => peer.toJson()).toList(),
+        }),
+      );
+      await socket.flush();
+      final line = await utf8.decoder
+          .bind(socket)
+          .transform(const LineSplitter())
+          .first
+          .timeout(const Duration(hours: 4));
+      final response = jsonDecode(line) as Map<String, Object?>;
+      final ok = response['ok'] == true;
+      if (ok) {
+        onLog(
+          'Re-replicacao solicitada para "${video.name}" via ${owner.name}',
+        );
+      }
+      return ok;
+    } on Object catch (error) {
+      onLog('Re-replicacao falhou via ${owner.name}: $error');
+      return false;
+    } finally {
+      socket?.destroy();
+    }
   }
 }
 
