@@ -37,7 +37,63 @@ No Linux:
 flutter run -d linux
 ```
 
-## Teste em duas maquinas
+## Executar a release no Linux
+
+Baixe `VideoParty-linux-x64.tar.gz` na pagina de releases e extraia o pacote:
+
+```bash
+tar -xzf VideoParty-linux-x64.tar.gz
+cd bundle
+./video_party
+```
+
+Se o Linux bloquear a execucao, marque o binario como executavel:
+
+```bash
+chmod +x video_party
+./video_party
+```
+
+Em distribuicoes baseadas em Ubuntu/Debian, instale as dependencias de runtime se o app nao abrir por falta de biblioteca nativa:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-0 libmpv2
+```
+
+## Teste em rede local ou Tailscale
+
+O app funciona em rede local pelo roteador, sem Tailscale, desde que as maquinas estejam na mesma rede Wi-Fi/cabo e o firewall permita conexoes TCP nas portas usadas pelo app. Nao precisa configurar port forwarding no roteador para usar dentro da mesma rede local.
+
+Para usar pela rede local, substitua os IPs `100.x.x.x` do Tailscale pelos IPs locais das maquinas, por exemplo `192.168.0.23` ou `192.168.1.50`. No Windows, descubra o IP com `ipconfig`. No Linux, use `ip addr` ou `hostname -I`.
+
+### Maquina A como tracker
+
+1. Abra o app na maquina A.
+2. Em `Meu IP/Tailscale`, informe o IP local da maquina A, por exemplo `192.168.0.23`.
+3. Em `Tracker IP`, informe o mesmo IP da maquina A.
+4. Deixe a porta do tracker como `4040`, salvo se quiser usar outra.
+5. Deixe a porta de upload como `5051`, salvo se quiser usar outra.
+6. Escolha a **Pasta de videos**.
+7. Clique em **Iniciar tracker**.
+8. Clique em **Ativar upload**.
+9. Clique em **Escanear e registrar**.
+
+### Outras maquinas na rede
+
+1. Abra o app na maquina B, C ou outra maquina da rede.
+2. Em `Tracker IP`, informe o IP local da maquina A, por exemplo `192.168.0.23`.
+3. Em `Meu IP/Tailscale`, informe o IP local da propria maquina, por exemplo `192.168.0.31`.
+4. Use a mesma porta do tracker configurada na maquina A, normalmente `4040`.
+5. Use uma porta de upload livre nessa maquina, normalmente `5051`.
+6. Escolha a **Pasta de videos**.
+7. Clique em **Ativar upload**.
+8. Clique em **Escanear e registrar**.
+9. Clique em **Atualizar rede**.
+
+Se as maquinas nao se enxergarem, libere no firewall as portas TCP `4040` e `5051` nas maquinas que recebem conexoes. Se varios peers rodarem na mesma maquina, use portas de upload diferentes para cada instancia.
+
+## Teste em duas maquinas com Tailscale
 
 1. Instale e conecte as duas maquinas no Tailscale.
 2. Na maquina A, abra o app e clique em **Iniciar tracker**.

@@ -38,6 +38,7 @@ class AppController extends ChangeNotifier {
   final List<String> logs = [];
   final Map<String, DownloadProgress> downloads = {};
   final Map<String, _DownloadTelemetry> _downloadTelemetry = {};
+  final Map<String, DateTime> _lastDownloadNotification = {};
   final Set<String> _prefetching = {};
   bool _registered = false;
 
@@ -223,7 +224,7 @@ class AppController extends ChangeNotifier {
     if (peers.isEmpty) {
       throw StateError('Nenhum peer remoto possui "${entry.title}".');
     }
-    _setDownloadProgress(
+    _updateDownloadProgress(
       DownloadProgress(
         hash: entry.hash,
         title: entry.title,
@@ -231,16 +232,16 @@ class AppController extends ChangeNotifier {
         totalBytes: video.size,
         status: reason,
       ),
+      force: true,
     );
-    notifyListeners();
     try {
       await peer.downloadFromPeers(
         peers: peers,
         video: video,
         outputDirectory: _downloadDirectory,
+        maxParallelDownloads: reason == 'prefetch' ? 1 : null,
         onProgress: (progress) {
-          _setDownloadProgress(progress);
-          notifyListeners();
+          _updateDownloadProgress(progress);
         },
       );
     } on Object catch (error) {
@@ -255,8 +256,7 @@ class AppController extends ChangeNotifier {
           video: video,
           outputDirectory: _downloadDirectory,
           onProgress: (progress) {
-            _setDownloadProgress(progress);
-            notifyListeners();
+            _updateDownloadProgress(progress);
           },
         );
       }
@@ -321,8 +321,7 @@ class AppController extends ChangeNotifier {
             video: video,
             outputDirectory: _downloadDirectory,
             onProgress: (progress) {
-              _setDownloadProgress(progress);
-              notifyListeners();
+              _updateDownloadProgress(progress);
             },
           );
           return;
@@ -344,13 +343,28 @@ class AppController extends ChangeNotifier {
     );
   }
 
-  void _setDownloadProgress(DownloadProgress progress) {
+  void _updateDownloadProgress(
+    DownloadProgress progress, {
+    bool force = false,
+  }) {
     final now = DateTime.now();
     final telemetry = _downloadTelemetry.putIfAbsent(
       progress.hash,
       () => _DownloadTelemetry(now, progress.receivedBytes),
     );
     downloads[progress.hash] = telemetry.apply(progress, now);
+
+    final lastNotification = _lastDownloadNotification[progress.hash];
+    final shouldNotify =
+        force ||
+        progress.isComplete ||
+        lastNotification == null ||
+        now.difference(lastNotification) >= const Duration(milliseconds: 250);
+    if (!shouldNotify) {
+      return;
+    }
+    _lastDownloadNotification[progress.hash] = now;
+    notifyListeners();
   }
 
   void _log(String message) {
@@ -388,14 +402,25 @@ class AppController extends ChangeNotifier {
     _player = player;
     videoController = VideoController(player);
     _positionSubscription = player.stream.position.listen((position) {
-      playbackSeconds = position.inSeconds;
+      final seconds = position.inSeconds;
+      if (seconds == playbackSeconds) {
+        return;
+      }
+      playbackSeconds = seconds;
       notifyListeners();
     });
     _durationSubscription = player.stream.duration.listen((duration) {
-      playbackDuration = duration.inSeconds == 0 ? 1 : duration.inSeconds;
+      final seconds = duration.inSeconds == 0 ? 1 : duration.inSeconds;
+      if (seconds == playbackDuration) {
+        return;
+      }
+      playbackDuration = seconds;
       notifyListeners();
     });
     _playingSubscription = player.stream.playing.listen((playing) {
+      if (playing == isPlaying) {
+        return;
+      }
       isPlaying = playing;
       notifyListeners();
     });

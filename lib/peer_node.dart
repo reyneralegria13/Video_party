@@ -11,7 +11,7 @@ typedef ProgressWriter = void Function(DownloadProgress progress);
 typedef LogWriter = void Function(String message);
 
 const _maxParallelDownloads = 4;
-const _transferBlockSize = 1024;
+const _transferBlockSize = 64 * 1024;
 const _simplePeerCipherKey = 'video-party-p2p-demo-key';
 const defaultReplicaCount = 2;
 
@@ -243,6 +243,7 @@ class PeerNode {
     required VideoItem video,
     required Directory outputDirectory,
     required ProgressWriter onProgress,
+    int? maxParallelDownloads,
   }) async {
     if (peers.isEmpty) {
       throw StateError('Nenhum peer remoto disponivel para download.');
@@ -251,7 +252,10 @@ class PeerNode {
     final finalFile = _targetFile(outputDirectory, video);
     final ranges = _buildRanges(
       totalBytes: video.size,
-      partCount: min(peers.length, _maxParallelDownloads),
+      partCount: min(
+        peers.length,
+        max(1, maxParallelDownloads ?? _maxParallelDownloads),
+      ),
     );
     final partFiles = [
       for (var i = 0; i < ranges.length; i++) File('${finalFile.path}.part.$i'),
@@ -771,13 +775,18 @@ class _DownloadRange {
 
 List<int> _xorCipher(List<int> bytes, {required int absoluteOffset}) {
   final output = List<int>.filled(bytes.length, 0);
+  var currentBlock = -1;
+  var keyBytes = const <int>[];
   for (var i = 0; i < bytes.length; i++) {
     final position = absoluteOffset + i;
     final block = position ~/ 32;
     final blockOffset = position % 32;
-    final keyBytes = sha256
-        .convert(utf8.encode('$_simplePeerCipherKey:$block'))
-        .bytes;
+    if (block != currentBlock) {
+      currentBlock = block;
+      keyBytes = sha256
+          .convert(utf8.encode('$_simplePeerCipherKey:$block'))
+          .bytes;
+    }
     output[i] = bytes[i] ^ keyBytes[blockOffset];
   }
   return output;
