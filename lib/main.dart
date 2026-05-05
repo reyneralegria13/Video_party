@@ -63,17 +63,17 @@ class PartyHomePage extends StatefulWidget {
   State<PartyHomePage> createState() => _PartyHomePageState();
 }
 
-enum _SidebarSection { home, playlist, downloads, settings }
+enum _SidebarSection { config, player, playlist }
 
 class _PartyHomePageState extends State<PartyHomePage> {
   AppController get controller => widget.controller;
 
-  _SidebarSection _selectedSection = _SidebarSection.home;
+  _SidebarSection _selectedSection = _SidebarSection.config;
 
+  final PageController _pageController = PageController();
   final ScrollController _mainScrollController = ScrollController();
   final ScrollController _rightPanelScrollController = ScrollController();
-  final GlobalKey _homeKey = GlobalKey();
-  final GlobalKey _controlKey = GlobalKey();
+  final GlobalKey _configKey = GlobalKey();
   final GlobalKey _playerKey = GlobalKey();
   final GlobalKey _libraryKey = GlobalKey();
   final GlobalKey _playlistKey = GlobalKey();
@@ -101,6 +101,7 @@ class _PartyHomePageState extends State<PartyHomePage> {
 
   @override
   void dispose() {
+    _pageController.dispose();
     _mainScrollController.dispose();
     _rightPanelScrollController.dispose();
     peerName.dispose();
@@ -117,98 +118,147 @@ class _PartyHomePageState extends State<PartyHomePage> {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        final isWide = MediaQuery.sizeOf(context).width >= 980;
+        final mobileContent = PageView(
+          controller: _pageController,
+          onPageChanged: (index) {
+            final nextSection = _sectionForPage(index);
+            if (nextSection != _selectedSection) {
+              setState(() {
+                _selectedSection = nextSection;
+              });
+            }
+          },
+          children: [
+            _MobilePage(
+              children: [
+                _Header(key: _configKey, controller: controller),
+                const SizedBox(height: 16),
+                _ControlPanel(
+                  controller: controller,
+                  peerName: peerName,
+                  trackerHost: trackerHost,
+                  trackerPort: trackerPort,
+                  advertisedHost: advertisedHost,
+                  uploadPort: uploadPort,
+                  folderPath: folderPath,
+                ),
+              ],
+            ),
+            _MobilePage(
+              children: [
+                _NowPlaying(key: _playerKey, controller: controller),
+                const SizedBox(height: 16),
+                _Library(key: _libraryKey, controller: controller),
+              ],
+            ),
+            _RightPanel(
+              controller: controller,
+              scrollController: _rightPanelScrollController,
+              playlistKey: _playlistKey,
+              peersKey: _peersKey,
+              eventsKey: _eventsKey,
+            ),
+          ],
+        );
+
         return Scaffold(
           body: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 980;
-                final content = wide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _SideBar(
-                            controller: controller,
-                            selectedSection: _selectedSection,
-                            onHome: () =>
-                                _navigateTo(_SidebarSection.home, _homeKey),
-                            onPlaylist: () => _navigateTo(
-                              _SidebarSection.playlist,
-                              _playlistKey,
-                            ),
-                            onDownloads: () => _navigateTo(
-                              _SidebarSection.downloads,
-                              _playerKey,
-                            ),
-                            onSettings: () => _navigateTo(
-                              _SidebarSection.settings,
-                              _controlKey,
-                            ),
-                          ),
-                          Expanded(
-                            child: _MainArea(
-                              scrollController: _mainScrollController,
-                              controller: controller,
-                              peerName: peerName,
-                              trackerHost: trackerHost,
-                              trackerPort: trackerPort,
-                              advertisedHost: advertisedHost,
-                              uploadPort: uploadPort,
-                              folderPath: folderPath,
-                              homeKey: _homeKey,
-                              controlKey: _controlKey,
-                              playerKey: _playerKey,
-                              libraryKey: _libraryKey,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 360,
-                            child: _RightPanel(
-                              controller: controller,
-                              scrollController: _rightPanelScrollController,
-                              playlistKey: _playlistKey,
-                              peersKey: _peersKey,
-                              eventsKey: _eventsKey,
-                            ),
-                          ),
-                        ],
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          _Header(key: _homeKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _ControlPanel(
-                            key: _controlKey,
-                            controller: controller,
-                            peerName: peerName,
-                            trackerHost: trackerHost,
-                            trackerPort: trackerPort,
-                            advertisedHost: advertisedHost,
-                            uploadPort: uploadPort,
-                            folderPath: folderPath,
-                          ),
-                          const SizedBox(height: 16),
-                          _NowPlaying(key: _playerKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _Library(key: _libraryKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _RightPanel(
-                            controller: controller,
-                            playlistKey: _playlistKey,
-                            peersKey: _peersKey,
-                            eventsKey: _eventsKey,
-                          ),
-                        ],
-                      );
-                return wide
-                    ? content
-                    : ColoredBox(color: context.appBackground, child: content);
-              },
-            ),
+            child: isWide
+                ? Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SideBar(
+                        controller: controller,
+                        selectedSection: _selectedSection,
+                        onConfig: () =>
+                            _navigateTo(_SidebarSection.config, _configKey),
+                        onPlayer: () =>
+                            _navigateTo(_SidebarSection.player, _playerKey),
+                        onPlaylist: () =>
+                            _navigateTo(_SidebarSection.playlist, _playlistKey),
+                      ),
+                      Expanded(
+                        child: _MainArea(
+                          scrollController: _mainScrollController,
+                          controller: controller,
+                          peerName: peerName,
+                          trackerHost: trackerHost,
+                          trackerPort: trackerPort,
+                          advertisedHost: advertisedHost,
+                          uploadPort: uploadPort,
+                          folderPath: folderPath,
+                          configKey: _configKey,
+                          playerKey: _playerKey,
+                          libraryKey: _libraryKey,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 360,
+                        child: _RightPanel(
+                          controller: controller,
+                          scrollController: _rightPanelScrollController,
+                          playlistKey: _playlistKey,
+                          peersKey: _peersKey,
+                          eventsKey: _eventsKey,
+                        ),
+                      ),
+                    ],
+                  )
+                : ColoredBox(
+                    color: context.appBackground,
+                    child: mobileContent,
+                  ),
           ),
+          bottomNavigationBar: isWide
+              ? null
+              : NavigationBar(
+                  selectedIndex: _pageIndexFor(_selectedSection),
+                  onDestinationSelected: (index) {
+                    final section = _sectionForPage(index);
+                    setState(() {
+                      _selectedSection = section;
+                    });
+                    _pageController.animateToPage(
+                      index,
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeOutCubic,
+                    );
+                  },
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.settings_rounded),
+                      label: 'Config',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.play_circle_rounded),
+                      label: 'Player',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.queue_music_rounded),
+                      label: 'Playlist',
+                    ),
+                  ],
+                ),
         );
       },
     );
+  }
+
+  int _pageIndexFor(_SidebarSection section) {
+    return switch (section) {
+      _SidebarSection.config => 0,
+      _SidebarSection.player => 1,
+      _SidebarSection.playlist => 2,
+    };
+  }
+
+  _SidebarSection _sectionForPage(int index) {
+    return switch (index) {
+      0 => _SidebarSection.config,
+      1 => _SidebarSection.player,
+      _ => _SidebarSection.playlist,
+    };
   }
 
   void _scrollTo(GlobalKey key) {
@@ -316,18 +366,16 @@ class _SideBar extends StatelessWidget {
   const _SideBar({
     required this.controller,
     required this.selectedSection,
-    required this.onHome,
+    required this.onConfig,
+    required this.onPlayer,
     required this.onPlaylist,
-    required this.onDownloads,
-    required this.onSettings,
   });
 
   final AppController controller;
   final _SidebarSection selectedSection;
-  final VoidCallback onHome;
+  final VoidCallback onConfig;
+  final VoidCallback onPlayer;
   final VoidCallback onPlaylist;
-  final VoidCallback onDownloads;
-  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -344,28 +392,22 @@ class _SideBar extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           _NavIcon(
-            icon: Icons.home_rounded,
-            tooltip: 'Inicio',
-            selected: selectedSection == _SidebarSection.home,
-            onPressed: onHome,
+            icon: Icons.settings_rounded,
+            tooltip: 'Configuracao',
+            selected: selectedSection == _SidebarSection.config,
+            onPressed: onConfig,
+          ),
+          _NavIcon(
+            icon: Icons.play_circle_rounded,
+            tooltip: 'Player',
+            selected: selectedSection == _SidebarSection.player,
+            onPressed: onPlayer,
           ),
           _NavIcon(
             icon: Icons.queue_music_rounded,
             tooltip: 'Playlist',
             selected: selectedSection == _SidebarSection.playlist,
             onPressed: onPlaylist,
-          ),
-          _NavIcon(
-            icon: Icons.cloud_download_rounded,
-            tooltip: 'Player e downloads',
-            selected: selectedSection == _SidebarSection.downloads,
-            onPressed: onDownloads,
-          ),
-          _NavIcon(
-            icon: Icons.settings_rounded,
-            tooltip: 'Configuracoes',
-            selected: selectedSection == _SidebarSection.settings,
-            onPressed: onSettings,
           ),
           const Spacer(),
           _ThemeMenu(controller: controller),
@@ -419,8 +461,7 @@ class _MainArea extends StatelessWidget {
     required this.advertisedHost,
     required this.uploadPort,
     required this.folderPath,
-    required this.homeKey,
-    required this.controlKey,
+    required this.configKey,
     required this.playerKey,
     required this.libraryKey,
   });
@@ -433,8 +474,7 @@ class _MainArea extends StatelessWidget {
   final TextEditingController advertisedHost;
   final TextEditingController uploadPort;
   final TextEditingController folderPath;
-  final GlobalKey homeKey;
-  final GlobalKey controlKey;
+  final GlobalKey configKey;
   final GlobalKey playerKey;
   final GlobalKey libraryKey;
 
@@ -444,10 +484,9 @@ class _MainArea extends StatelessWidget {
       controller: scrollController,
       padding: const EdgeInsets.all(22),
       children: [
-        _Header(key: homeKey, controller: controller),
+        _Header(key: configKey, controller: controller),
         const SizedBox(height: 16),
         _ControlPanel(
-          key: controlKey,
           controller: controller,
           peerName: peerName,
           trackerHost: trackerHost,
@@ -461,6 +500,23 @@ class _MainArea extends StatelessWidget {
         const SizedBox(height: 18),
         _Library(key: libraryKey, controller: controller),
       ],
+    );
+  }
+}
+
+class _MobilePage extends StatelessWidget {
+  const _MobilePage({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.appBackground,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: children,
+      ),
     );
   }
 }
