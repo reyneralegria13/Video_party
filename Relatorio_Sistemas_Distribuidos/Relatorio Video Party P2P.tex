@@ -18,9 +18,11 @@
 \usepackage{float}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
 
 \titulo{Relatório Técnico - Video Party P2P}
-\autor{Felipe William Galdino da Silva, \\ João Carlos G. Iannuzzi, \\ Reyner C. Silva Alegria}
+\autor{Felipe William Galdino da Silva, \\ João Carlos G. Iannuzzi, \\ Margarida N. P. dos Santos, \\ Reyner C. Silva Alegria}
 \local{Itacoatiara - AM}
 \data{\the\year}
 \preambulo{Trabalho apresentado ao professor Antonio Alberto Sena dos Santos, do Instituto de Ciências Exatas e Tecnologia da Universidade Federal do Amazonas, como atividade prática para a obtenção de nota na disciplina de Sistemas Distribuídos.}
@@ -173,7 +175,35 @@ A implementação foi organizada em cinco módulos principais:
 	\label{tab:componentes}
 \end{table}
 
-\espacofigura{fig:arquitetura}{Inserir aqui um diagrama da arquitetura P2P híbrida, com o tracker ao centro, peers ao redor, setas de controle para o tracker e setas de transferência direta entre peers.}{Área reservada para o diagrama da arquitetura geral do Video Party P2P.}
+\begin{figure}[H]
+	\centering
+	\begin{tikzpicture}[
+		node distance=2.4cm,
+		tracker/.style={draw, thick, rounded corners, fill=gray!20, minimum width=3.2cm, minimum height=1.2cm, align=center},
+		peer/.style={draw, rounded corners, fill=gray!10, minimum width=2.8cm, minimum height=1.1cm, align=center},
+		control/.style={-Latex, thick},
+		data/.style={Latex-Latex, thick, dashed}
+	]
+		\node[tracker] (tracker) {Tracker\\(metadados)};
+
+		\node[peer] (p1) [above left=2.1cm and 3.2cm of tracker] {Peer A\\(upload)};
+		\node[peer] (p2) [above right=2.1cm and 3.2cm of tracker] {Peer B\\(upload)};
+		\node[peer] (p3) [below right=2.1cm and 3.2cm of tracker] {Peer C\\(upload)};
+		\node[peer] (p4) [below left=2.1cm and 3.2cm of tracker] {Peer D\\(upload)};
+
+		\draw[control] (p1) -- node[midway, sloped, above, font=\scriptsize] {controle} (tracker);
+		\draw[control] (p2) -- (tracker);
+		\draw[control] (p3) -- (tracker);
+		\draw[control] (p4) -- (tracker);
+
+		\draw[data] (p1) to[bend left=12] node[midway, above, font=\scriptsize] {transfer\^encia direta} (p2);
+		\draw[data] (p2) to[bend left=12] (p3);
+		\draw[data] (p3) to[bend left=12] (p4);
+		\draw[data] (p4) to[bend left=12] (p1);
+	\end{tikzpicture}
+	\caption{Diagrama da arquitetura P2P h\'ibrida do Video Party P2P.}
+	\label{fig:arquitetura}
+\end{figure}
 
 \subsection{Fluxo geral}
 
@@ -181,7 +211,12 @@ O fluxo de uso previsto envolve duas ou mais máquinas. Uma delas inicia o track
 
 Quando um vídeo da playlist não está disponível localmente, o cliente consulta o tracker para descobrir quais peers possuem aquele hash. Em seguida, tenta baixar o arquivo diretamente dos peers encontrados. Se a conexão direta falhar, o cliente solicita ao tracker um \texttt{RELAY\_DOWNLOAD}; nesse caso, o tracker conecta em um peer dono do arquivo e repassa os bytes ao solicitante.
 
-\espacofigura{fig:interface}{Inserir aqui um print da tela principal do aplicativo, mostrando configuração de tracker, upload, catálogo global, playlist e painel de eventos.}{Área reservada para a interface principal do aplicativo em execução.}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.85\textwidth]{imagens/figure2.png}
+	\caption{Interface principal do aplicativo em execucao.}
+	\label{fig:interface}
+\end{figure}
 
 \section{Protocolo Implementado}
 
@@ -233,7 +268,60 @@ Caso a conexão direta não seja possível, o cliente usa o relay do tracker:
 }
 \end{lstlisting}
 
-\espacofigura{fig:sequencia}{Inserir aqui um diagrama de sequência com os passos REGISTER, LOOKUP, GET\_FILE e RELAY\_DOWNLOAD entre peer solicitante, tracker e peer dono do arquivo.}{Área reservada para o diagrama de sequência do protocolo de comunicação.}
+\begin{figure}[H]
+	\centering
+	\resizebox{\textwidth}{!}{%
+	\begin{tikzpicture}[
+		font=\scriptsize,
+		lifeline/.style={draw, rounded corners, fill=gray!10, minimum width=3cm, minimum height=0.8cm, align=center},
+		msg/.style={-Latex, thick},
+		msglabel/.style={midway, above, fill=white, inner sep=1.5pt, align=center},
+		lifeline-line/.style={dashed, gray}
+	]
+		\node[lifeline] (peerA) {Peer solicitante};
+		\node[lifeline] (tracker) [right=3.8cm of peerA] {Tracker};
+		\node[lifeline] (peerB) [right=3.8cm of tracker] {Peer dono do arquivo};
+
+		\path (peerA.south) ++(0,-0.8cm) coordinate (a-reg);
+		\path (tracker.south) ++(0,-0.8cm) coordinate (t-reg);
+		\path (peerB.south) ++(0,-0.8cm) coordinate (b-reg);
+		\path (peerA.south) ++(0,-1.8cm) coordinate (a-lookup);
+		\path (tracker.south) ++(0,-1.8cm) coordinate (t-lookup);
+		\path (peerB.south) ++(0,-1.8cm) coordinate (b-lookup);
+		\path (peerA.south) ++(0,-2.8cm) coordinate (a-list);
+		\path (tracker.south) ++(0,-2.8cm) coordinate (t-list);
+		\path (peerB.south) ++(0,-2.8cm) coordinate (b-list);
+		\path (peerA.south) ++(0,-3.8cm) coordinate (a-get);
+		\path (tracker.south) ++(0,-3.8cm) coordinate (t-get);
+		\path (peerB.south) ++(0,-3.8cm) coordinate (b-get);
+		\path (peerA.south) ++(0,-4.8cm) coordinate (a-bytes);
+		\path (tracker.south) ++(0,-4.8cm) coordinate (t-bytes);
+		\path (peerB.south) ++(0,-4.8cm) coordinate (b-bytes);
+		\path (peerA.south) ++(0,-5.9cm) coordinate (a-relayReq);
+		\path (tracker.south) ++(0,-5.9cm) coordinate (t-relayReq);
+		\path (peerB.south) ++(0,-5.9cm) coordinate (b-relayReq);
+		\path (peerA.south) ++(0,-7.0cm) coordinate (a-relayPeer);
+		\path (tracker.south) ++(0,-7.0cm) coordinate (t-relayPeer);
+		\path (peerB.south) ++(0,-7.0cm) coordinate (b-relayPeer);
+
+		\draw[lifeline-line] (peerA.south) -- (a-relayPeer);
+		\draw[lifeline-line] (tracker.south) -- (t-relayPeer);
+		\draw[lifeline-line] (peerB.south) -- (b-relayPeer);
+
+		\draw[msg] (a-reg) -- node[msglabel] {REGISTER} (t-reg);
+		\draw[msg] (a-lookup) -- node[msglabel] {LOOKUP\\(hash/nome)} (t-lookup);
+		\draw[msg] (t-list) -- node[msglabel] {LISTA\\de peers} (a-list);
+
+		\draw[msg] (a-get) -- node[msglabel] {GET\_FILE\\(offset/length)} (b-get);
+		\draw[msg] (b-bytes) -- node[msglabel] {BYTES\\do arquivo} (a-bytes);
+
+		\draw[msg] (a-relayReq) -- node[msglabel] {RELAY\_DOWNLOAD} (t-relayReq);
+		\draw[msg] (t-relayPeer) -- node[msglabel] {RELAY\\para peer} (b-relayPeer);
+	\end{tikzpicture}
+	}
+	\caption{Diagrama de sequencia do protocolo de comunicacao entre peers e tracker.}
+	\label{fig:sequencia}
+\end{figure}
 
 \section{Metodologia de Desenvolvimento}
 
@@ -266,7 +354,12 @@ O resultado do trabalho é um aplicativo desktop funcional para Windows e Linux,
 	\item interface responsiva com painel principal, barra lateral, painel de playlist, peers e eventos.
 \end{itemize}
 
-\espacofigura{fig:download}{Inserir aqui um print do aplicativo durante um download ou reprodução, mostrando progresso, playlist global e player embutido.}{Área reservada para evidência visual de download, playlist e reprodução local.}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{imagens/figure4.png}
+	\caption{Aplicativo durante download ou reprodução, exibindo progresso, playlist global e player embutido.}
+	\label{fig:download}
+\end{figure}
 
 \begin{table}[H]
 	\centering
@@ -307,7 +400,12 @@ flutter analyze
 flutter test
 \end{lstlisting}
 
-\espacofigura{fig:testes}{Inserir aqui um print do terminal com a execução de \texttt{flutter test} e, se desejado, \texttt{flutter analyze}.}{Área reservada para evidência visual da validação automatizada.}
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.9\textwidth]{imagens/terminal_testes.png}
+	\caption{Evidência detalhada da validação automatizada. O quadro demonstra o sucesso da análise estática (\textit{analyze}), atestando as boas práticas de código, e a execução dos testes (\textit{test}), comprovando o funcionamento das transferências distribuídas, regras do \textit{tracker} e da interface gráfica.}
+	\label{fig:testes}
+\end{figure}
 
 \section{Discussão}
 

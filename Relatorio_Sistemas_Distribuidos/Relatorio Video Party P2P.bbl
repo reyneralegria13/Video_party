@@ -1,0 +1,41 @@
+\providecommand{\abntreprintinfo}[1]{%
+ \citeonline{#1}}
+\setlength{\labelsep}{0pt}\begin{thebibliography}{}
+\providecommand{\abntrefinfo}[3]{}
+\providecommand{\abntbstabout}[1]{}
+\abntbstabout{v-1.9.7 }
+
+\bibitem[Coulouris et al. 2012]{coulouris2012distributed}
+\abntrefinfo{Coulouris et al.}{COULOURIS et al.}{2012}
+{COULOURIS, G. et al. \textbf{Distributed Systems: Concepts and Design}. 5. ed. [S.l.]: Addison-Wesley, 2012.}
+
+\bibitem[{Dart} 2026]{dartio}
+\abntrefinfo{{Dart}}{{Dart}}{2026}
+{{Dart}. \textbf{dart:io library}. 2026. \url{https://api.dart.dev/dart-io/}.
+Acesso em 3 maio 2026.}
+
+\bibitem[Eddy 2022]{rfc9293}
+\abntrefinfo{Eddy}{EDDY}{2022}
+{EDDY, W. \textbf{Transmission Control Protocol (TCP)}. 2022. \url{https://www.rfc-editor.org/rfc/rfc9293}.
+RFC 9293.}
+
+\bibitem[{Flutter} 2026]{flutterdocs}
+\abntrefinfo{{Flutter}}{{Flutter}}{2026}
+{{Flutter}. \textbf{Flutter Documentation}. 2026. \url{https://docs.flutter.dev/}.
+Acesso em 3 maio 2026.}
+
+\bibitem[{media\_kit} 2026]{mediakit}
+\abntrefinfo{{media\_kit}}{{media\_kit}}{2026}
+{{media\_kit}. \textbf{media\_kit package}. 2026. \url{https://pub.dev/packages/media_kit}.
+Acesso em 3 maio 2026.}
+
+\bibitem[{National Institute of Standards and Technology} 2015]{nist2015sha}
+\abntrefinfo{{National Institute of Standards and Technology}}{{National Institute of Standards and Technology}}{2015}
+{{National Institute of Standards and Technology}. \textbf{Secure Hash Standard (SHS)}. 2015. \url{https://doi.org/10.6028/NIST.FIPS.180-4}.
+FIPS PUB 180-4.}
+
+\bibitem[Tanenbaum e Steen 2017]{tanenbaum2017distributed}
+\abntrefinfo{Tanenbaum e Steen}{TANENBAUM; STEEN}{2017}
+{TANENBAUM, A.~S.; STEEN, M. V. \textbf{Distributed Systems}. 3. ed. [S.l.]: Maarten van Steen, 2017.}
+
+\end{thebibliography}
