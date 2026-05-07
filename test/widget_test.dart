@@ -26,4 +26,36 @@ void main() {
     expect(find.text('Branco'), findsOneWidget);
     expect(find.text('Sistema'), findsOneWidget);
   });
+
+  testWidgets('usa navegacao inferior em telas mobile', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const VideoPartyApp());
+
+    expect(find.text('Catalogo global'), findsOneWidget);
+    expect(find.text('Player'), findsOneWidget);
+    expect(find.text('Downloads'), findsOneWidget);
+    expect(find.text('Config'), findsOneWidget);
+
+    await tester.tap(find.text('Player'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nenhum video em reproducao'), findsOneWidget);
+    expect(find.text('Playlist global'), findsOneWidget);
+
+    await tester.tap(find.text('Downloads'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Peers conectados'), findsOneWidget);
+    expect(find.text('Eventos'), findsOneWidget);
+
+    await tester.tap(find.text('Config'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Configuracao'), findsOneWidget);
+    expect(find.text('Pasta de videos'), findsOneWidget);
+  });
 }

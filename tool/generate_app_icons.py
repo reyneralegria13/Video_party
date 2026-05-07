@@ -138,18 +138,18 @@ def draw_icon(size):
     else:
         scale = 1
     big = size * scale
-    pixels = [(16, 17, 20, 255)] * (big * big)
+    pixels = [(5, 5, 7, 255)] * (big * big)
 
     for y in range(big):
         for x in range(big):
             nx = x / big
             ny = y / big
             t = min(1, max(0, (nx + ny) / 2))
-            base = mix((16, 17, 20), (8, 10, 13), t)
-            teal_glow = max(0, 1 - math.hypot(nx - 0.5, ny - 0.48) / 0.54)
-            r = min(255, base[0] + round(16 * teal_glow))
-            g = min(255, base[1] + round(48 * teal_glow))
-            b = min(255, base[2] + round(44 * teal_glow))
+            base = mix((5, 5, 7), (2, 2, 4), t)
+            accent_glow = max(0, 1 - math.hypot(nx - 0.5, ny - 0.48) / 0.54)
+            r = min(255, base[0] + round(34 * accent_glow))
+            g = min(255, base[1] + round(26 * accent_glow))
+            b = min(255, base[2] + round(54 * accent_glow))
             pixels[y * big + x] = (r, g, b, 255)
 
     margin = 168 / 1024 * big
@@ -157,40 +157,40 @@ def draw_icon(size):
     for y in range(big):
         for x in range(big):
             if rounded_rect_mask(x + 0.5, y + 0.5, big, margin, radius):
-                set_px(pixels, big, x, y, (21, 26, 31, 238))
+                set_px(pixels, big, x, y, (21, 21, 27, 238))
 
     for side_x in (220 / 1024 * big, 760 / 1024 * big):
         for yy in (310, 446, 582):
             cx = side_x + 22 / 1024 * big
             cy = yy / 1024 * big + 30 / 1024 * big
-            draw_circle(pixels, big, cx, cy, 25 / 1024 * big, (38, 52, 58, 210))
+            draw_circle(pixels, big, cx, cy, 25 / 1024 * big, (43, 41, 54, 210))
 
     top = (512 / 1024 * big, 358 / 1024 * big)
     left = (350 / 1024 * big, 660 / 1024 * big)
     right = (674 / 1024 * big, 660 / 1024 * big)
-    draw_line(pixels, big, *left, *top, 36 / 1024 * big, (56, 232, 198, 218))
-    draw_line(pixels, big, *top, *right, 36 / 1024 * big, (0, 163, 255, 218))
-    draw_line(pixels, big, *left, *right, 28 / 1024 * big, (255, 189, 89, 232))
+    draw_line(pixels, big, *left, *top, 36 / 1024 * big, (167, 139, 250, 226))
+    draw_line(pixels, big, *top, *right, 36 / 1024 * big, (56, 189, 248, 226))
+    draw_line(pixels, big, *left, *right, 28 / 1024 * big, (245, 158, 11, 232))
 
     for center, stroke, dot in [
-        (top, (56, 232, 198, 255), (239, 255, 251, 255)),
+        (top, (167, 139, 250, 255), (244, 240, 255, 255)),
         (left, (255, 189, 89, 255), (255, 246, 217, 255)),
-        (right, (0, 163, 255, 255), (231, 247, 255, 255)),
+        (right, (56, 189, 248, 255), (231, 247, 255, 255)),
     ]:
-        draw_circle(pixels, big, center[0], center[1], 68 / 1024 * big, (10, 11, 13, 255))
+        draw_circle(pixels, big, center[0], center[1], 68 / 1024 * big, (5, 5, 7, 255))
         draw_ring(pixels, big, center[0], center[1], 68 / 1024 * big, 30 / 1024 * big, stroke)
         draw_circle(pixels, big, center[0], center[1], 18 / 1024 * big, dot)
 
     center = (512 / 1024 * big, 536 / 1024 * big)
-    draw_circle(pixels, big, *center, 146 / 1024 * big, (9, 10, 12, 255))
-    draw_ring(pixels, big, *center, 146 / 1024 * big, 24 / 1024 * big, (38, 52, 58, 245))
+    draw_circle(pixels, big, *center, 146 / 1024 * big, (2, 2, 4, 255))
+    draw_ring(pixels, big, *center, 146 / 1024 * big, 24 / 1024 * big, (43, 41, 54, 245))
 
     play = [
         (472 / 1024 * big, 450 / 1024 * big),
         (472 / 1024 * big, 622 / 1024 * big),
         (626 / 1024 * big, 536 / 1024 * big),
     ]
-    draw_polygon(pixels, big, play, (56, 232, 198, 255))
+    draw_polygon(pixels, big, play, (167, 139, 250, 255))
 
     return downsample(pixels, big, scale)
 
@@ -275,6 +275,11 @@ def main():
         ("web/icons/Icon-512.png", 512),
         ("web/icons/Icon-maskable-192.png", 192),
         ("web/icons/Icon-maskable-512.png", 512),
+        ("android/app/src/main/res/mipmap-mdpi/ic_launcher.png", 48),
+        ("android/app/src/main/res/mipmap-hdpi/ic_launcher.png", 72),
+        ("android/app/src/main/res/mipmap-xhdpi/ic_launcher.png", 96),
+        ("android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png", 144),
+        ("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png", 192),
         ("macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_16.png", 16),
         ("macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_32.png", 32),
         ("macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_64.png", 64),

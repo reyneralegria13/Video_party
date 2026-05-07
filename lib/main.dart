@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -117,97 +118,108 @@ class _PartyHomePageState extends State<PartyHomePage> {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        return Scaffold(
-          body: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 980;
-                final content = wide
-                    ? Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _SideBar(
-                            controller: controller,
-                            selectedSection: _selectedSection,
-                            onHome: () =>
-                                _navigateTo(_SidebarSection.home, _homeKey),
-                            onPlaylist: () => _navigateTo(
-                              _SidebarSection.playlist,
-                              _playlistKey,
-                            ),
-                            onDownloads: () => _navigateTo(
-                              _SidebarSection.downloads,
-                              _playerKey,
-                            ),
-                            onSettings: () => _navigateTo(
-                              _SidebarSection.settings,
-                              _controlKey,
-                            ),
-                          ),
-                          Expanded(
-                            child: _MainArea(
-                              scrollController: _mainScrollController,
-                              controller: controller,
-                              peerName: peerName,
-                              trackerHost: trackerHost,
-                              trackerPort: trackerPort,
-                              advertisedHost: advertisedHost,
-                              uploadPort: uploadPort,
-                              folderPath: folderPath,
-                              homeKey: _homeKey,
-                              controlKey: _controlKey,
-                              playerKey: _playerKey,
-                              libraryKey: _libraryKey,
-                            ),
-                          ),
-                          SizedBox(
-                            width: 360,
-                            child: _RightPanel(
-                              controller: controller,
-                              scrollController: _rightPanelScrollController,
-                              playlistKey: _playlistKey,
-                              peersKey: _peersKey,
-                              eventsKey: _eventsKey,
-                            ),
-                          ),
-                        ],
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          _Header(key: _homeKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _ControlPanel(
-                            key: _controlKey,
-                            controller: controller,
-                            peerName: peerName,
-                            trackerHost: trackerHost,
-                            trackerPort: trackerPort,
-                            advertisedHost: advertisedHost,
-                            uploadPort: uploadPort,
-                            folderPath: folderPath,
-                          ),
-                          const SizedBox(height: 16),
-                          _NowPlaying(key: _playerKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _Library(key: _libraryKey, controller: controller),
-                          const SizedBox(height: 16),
-                          _RightPanel(
-                            controller: controller,
-                            playlistKey: _playlistKey,
-                            peersKey: _peersKey,
-                            eventsKey: _eventsKey,
-                          ),
-                        ],
-                      );
-                return wide
-                    ? content
-                    : ColoredBox(color: context.appBackground, child: content);
-              },
-            ),
-          ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 980;
+            return Scaffold(
+              backgroundColor: context.appBackground,
+              body: SafeArea(
+                child: wide ? _buildWideContent() : _buildMobileContent(),
+              ),
+              bottomNavigationBar: wide
+                  ? null
+                  : _MobileNavBar(
+                      selectedSection: _selectedSection,
+                      onChanged: _selectMobileSection,
+                    ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildWideContent() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _SideBar(
+          controller: controller,
+          selectedSection: _selectedSection,
+          onHome: () => _navigateTo(_SidebarSection.home, _homeKey),
+          onPlaylist: () => _navigateTo(_SidebarSection.playlist, _playlistKey),
+          onDownloads: () => _navigateTo(_SidebarSection.downloads, _playerKey),
+          onSettings: () => _navigateTo(_SidebarSection.settings, _controlKey),
+        ),
+        Expanded(
+          child: _MainArea(
+            scrollController: _mainScrollController,
+            controller: controller,
+            peerName: peerName,
+            trackerHost: trackerHost,
+            trackerPort: trackerPort,
+            advertisedHost: advertisedHost,
+            uploadPort: uploadPort,
+            folderPath: folderPath,
+            homeKey: _homeKey,
+            controlKey: _controlKey,
+            playerKey: _playerKey,
+            libraryKey: _libraryKey,
+          ),
+        ),
+        SizedBox(
+          width: 360,
+          child: _RightPanel(
+            controller: controller,
+            scrollController: _rightPanelScrollController,
+            playlistKey: _playlistKey,
+            peersKey: _peersKey,
+            eventsKey: _eventsKey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileContent() {
+    final content = switch (_selectedSection) {
+      _SidebarSection.home => <Widget>[
+        _Header(key: _homeKey, controller: controller),
+        const SizedBox(height: 16),
+        _Library(key: _libraryKey, controller: controller),
+      ],
+      _SidebarSection.playlist => <Widget>[
+        _NowPlaying(key: _playerKey, controller: controller),
+        const SizedBox(height: 16),
+        _PlaylistPanel(key: _playlistKey, controller: controller),
+      ],
+      _SidebarSection.downloads => <Widget>[
+        _DownloadStatsPanel(controller: controller),
+        const SizedBox(height: 18),
+        _PeersPanel(key: _peersKey, controller: controller),
+        const SizedBox(height: 18),
+        _EventsPanel(key: _eventsKey, controller: controller),
+      ],
+      _SidebarSection.settings => <Widget>[
+        _MobilePageTitle(icon: Icons.settings_rounded, title: 'Configuracao'),
+        const SizedBox(height: 12),
+        _ControlPanel(
+          key: _controlKey,
+          controller: controller,
+          peerName: peerName,
+          trackerHost: trackerHost,
+          trackerPort: trackerPort,
+          advertisedHost: advertisedHost,
+          uploadPort: uploadPort,
+          folderPath: folderPath,
+        ),
+        const SizedBox(height: 16),
+        _MobileThemePanel(controller: controller),
+      ],
+    };
+    return ColoredBox(
+      color: context.appBackground,
+      child: ListView(padding: const EdgeInsets.all(16), children: content),
     );
   }
 
@@ -230,20 +242,26 @@ class _PartyHomePageState extends State<PartyHomePage> {
     });
     _scrollTo(key);
   }
+
+  void _selectMobileSection(_SidebarSection section) {
+    setState(() {
+      _selectedSection = section;
+    });
+  }
 }
 
 ThemeData _buildTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xff00c2a8),
+    seedColor: const Color(0xff8b5cf6),
     brightness: brightness,
   );
   return ThemeData(
     brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: dark
-        ? const Color(0xff101114)
-        : const Color(0xfff6f9fb),
+        ? const Color(0xff050507)
+        : const Color(0xfff7f7fb),
     useMaterial3: true,
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
@@ -267,47 +285,47 @@ extension PartyPalette on BuildContext {
   bool get isPartyDark => Theme.of(this).brightness == Brightness.dark;
 
   Color get appBackground =>
-      isPartyDark ? const Color(0xff101114) : const Color(0xfff6f9fb);
+      isPartyDark ? const Color(0xff050507) : const Color(0xfff7f7fb);
   Color get sidebarBackground =>
-      isPartyDark ? const Color(0xff181a1f) : const Color(0xffe8f1f4);
+      isPartyDark ? const Color(0xff0b0b10) : const Color(0xffececf3);
   Color get panelBackground =>
-      isPartyDark ? const Color(0xff15171b) : const Color(0xffedf4f7);
+      isPartyDark ? const Color(0xff101014) : const Color(0xfff1f1f6);
   Color get cardBackground =>
-      isPartyDark ? const Color(0xff181a1f) : const Color(0xffffffff);
+      isPartyDark ? const Color(0xff15151b) : const Color(0xffffffff);
   Color get raisedBackground =>
-      isPartyDark ? const Color(0xff1b1d22) : const Color(0xffffffff);
+      isPartyDark ? const Color(0xff1a1a22) : const Color(0xffffffff);
   Color get fieldBackground =>
-      isPartyDark ? const Color(0xff101114) : const Color(0xfff7fafb);
+      isPartyDark ? const Color(0xff09090d) : const Color(0xfffafaff);
   Color get mediaBackground =>
-      isPartyDark ? const Color(0xff090a0c) : const Color(0xffdce8ed);
+      isPartyDark ? const Color(0xff020204) : const Color(0xffe3e3ec);
   Color get mediaStripe =>
-      isPartyDark ? const Color(0xff15181c) : const Color(0xffc5d4da);
+      isPartyDark ? const Color(0xff171720) : const Color(0xffcdcddb);
   Color get tileBackground =>
-      isPartyDark ? const Color(0xff24272e) : const Color(0xffeef5f7);
+      isPartyDark ? const Color(0xff20202a) : const Color(0xfff0f0f7);
   Color get rowBackground =>
-      isPartyDark ? const Color(0xff1c1f24) : const Color(0xffffffff);
+      isPartyDark ? const Color(0xff181820) : const Color(0xffffffff);
   Color get selectedRowBackground =>
-      isPartyDark ? const Color(0xff20342f) : const Color(0xffd9f5ee);
+      isPartyDark ? const Color(0xff261f3f) : const Color(0xffeadfff);
   Color get borderColor =>
       isPartyDark ? Colors.white10 : const Color(0xffd5e1e6);
   Color get borderStrongColor =>
       isPartyDark ? Colors.white12 : const Color(0xffb9cbd2);
   Color get primaryAccent =>
-      isPartyDark ? const Color(0xff00c2a8) : const Color(0xff008f7d);
+      isPartyDark ? const Color(0xff8b5cf6) : const Color(0xff6d28d9);
   Color get primaryAccentSoft =>
-      isPartyDark ? const Color(0xff38e8c6) : const Color(0xff00776a);
+      isPartyDark ? const Color(0xffa78bfa) : const Color(0xff7c3aed);
   Color get warningAccent =>
-      isPartyDark ? const Color(0xffffbd59) : const Color(0xffb86f00);
+      isPartyDark ? const Color(0xfff59e0b) : const Color(0xffb45309);
   Color get secondaryAccent =>
-      isPartyDark ? const Color(0xff00a3ff) : const Color(0xff0877bd);
+      isPartyDark ? const Color(0xff38bdf8) : const Color(0xff0369a1);
   Color get textMuted => isPartyDark ? Colors.white60 : const Color(0xff4e5c66);
   Color get textSubtle =>
       isPartyDark ? Colors.white54 : const Color(0xff6f7d86);
   Color get textFaint => isPartyDark ? Colors.white38 : const Color(0xff9aa8af);
   Color get navSelected =>
-      isPartyDark ? const Color(0xff25322f) : const Color(0xffccefe7);
+      isPartyDark ? const Color(0xff211a36) : const Color(0xffeadfff);
   Color get statusActiveBackground =>
-      isPartyDark ? const Color(0xff183a32) : const Color(0xffd8f4ed);
+      isPartyDark ? const Color(0xff241b3a) : const Color(0xffece5ff);
   Color get statusInactiveBackground =>
       isPartyDark ? const Color(0xff25272d) : const Color(0xfff5f8fa);
 }
@@ -372,6 +390,50 @@ class _SideBar extends StatelessWidget {
           const SizedBox(height: 14),
         ],
       ),
+    );
+  }
+}
+
+class _MobileNavBar extends StatelessWidget {
+  const _MobileNavBar({required this.selectedSection, required this.onChanged});
+
+  final _SidebarSection selectedSection;
+  final ValueChanged<_SidebarSection> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: switch (selectedSection) {
+        _SidebarSection.home => 0,
+        _SidebarSection.playlist => 1,
+        _SidebarSection.downloads => 2,
+        _SidebarSection.settings => 3,
+      },
+      onDestinationSelected: (index) {
+        onChanged(switch (index) {
+          0 => _SidebarSection.home,
+          1 => _SidebarSection.playlist,
+          2 => _SidebarSection.downloads,
+          _ => _SidebarSection.settings,
+        });
+      },
+      backgroundColor: context.sidebarBackground,
+      indicatorColor: context.navSelected,
+      destinations: const [
+        NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Inicio'),
+        NavigationDestination(
+          icon: Icon(Icons.play_circle_rounded),
+          label: 'Player',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.cloud_download_rounded),
+          label: 'Downloads',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.settings_rounded),
+          label: 'Config',
+        ),
+      ],
     );
   }
 }
@@ -613,10 +675,11 @@ class _ControlPanel extends StatelessWidget {
                 width: 160,
               ),
               _Field(label: 'Porta upload', controller: uploadPort, width: 120),
-              _Field(
+              _FolderField(
                 label: 'Pasta de videos',
                 controller: folderPath,
                 width: 280,
+                onPick: () => _run(context, _pickVideoFolder),
               ),
             ],
           ),
@@ -674,6 +737,20 @@ class _ControlPanel extends StatelessWidget {
       folderPath: folderPath.text,
     );
   }
+
+  Future<void> _pickVideoFolder() async {
+    final selectedPath = await getDirectoryPath(
+      initialDirectory: folderPath.text.trim().isEmpty
+          ? null
+          : folderPath.text.trim(),
+      confirmButtonText: 'Selecionar',
+    );
+    if (selectedPath == null) {
+      return;
+    }
+    folderPath.text = selectedPath;
+    _saveConfig();
+  }
 }
 
 class _Field extends StatelessWidget {
@@ -699,6 +776,44 @@ class _Field extends StatelessWidget {
           filled: true,
           fillColor: context.fieldBackground,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+}
+
+class _FolderField extends StatelessWidget {
+  const _FolderField({
+    required this.label,
+    required this.controller,
+    required this.width,
+    required this.onPick,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final double width;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        onTap: onPick,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+          filled: true,
+          fillColor: context.fieldBackground,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          suffixIcon: IconButton(
+            tooltip: 'Escolher pasta',
+            onPressed: onPick,
+            icon: const Icon(Icons.folder_open_rounded),
+          ),
         ),
       ),
     );
@@ -1085,41 +1200,77 @@ class _RightPanel extends StatelessWidget {
       child: ListView(
         controller: scrollController,
         children: [
-          _PanelTitle(
-            key: playlistKey,
-            icon: Icons.queue_music_rounded,
-            title: 'Playlist global',
-          ),
-          const SizedBox(height: 10),
-          if (controller.snapshot.playlist.isEmpty)
-            const _EmptyState(
-              icon: Icons.queue_rounded,
-              text: 'Adicione videos do catalogo.',
-            )
-          else
-            ...controller.snapshot.playlist.indexed.map((item) {
-              final index = item.$1;
-              final entry = item.$2;
-              final selected = controller.nowPlaying?.id == entry.id;
-              final local = controller.peer.localPathFor(entry.hash) != null;
-              final progress = controller.downloads[entry.hash];
-              return _PlaylistRow(
-                entry: entry,
-                selected: selected,
-                local: local,
-                progress: progress,
-                onPlay: () => _run(context, () => controller.playEntry(index)),
-              );
-            }),
+          _PlaylistPanel(key: playlistKey, controller: controller),
           const SizedBox(height: 18),
           _DownloadStatsPanel(controller: controller),
           const SizedBox(height: 18),
-          _PanelTitle(
-            key: peersKey,
-            icon: Icons.group_rounded,
-            title: 'Peers conectados',
-          ),
-          const SizedBox(height: 10),
+          _PeersPanel(key: peersKey, controller: controller),
+          const SizedBox(height: 18),
+          _EventsPanel(key: eventsKey, controller: controller),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaylistPanel extends StatelessWidget {
+  const _PlaylistPanel({required this.controller, super.key});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PanelTitle(
+          icon: Icons.queue_music_rounded,
+          title: 'Playlist global',
+        ),
+        const SizedBox(height: 10),
+        if (controller.snapshot.playlist.isEmpty)
+          const _EmptyState(
+            icon: Icons.queue_rounded,
+            text: 'Adicione videos do catalogo.',
+          )
+        else
+          ...controller.snapshot.playlist.indexed.map((item) {
+            final index = item.$1;
+            final entry = item.$2;
+            final selected = controller.nowPlaying?.id == entry.id;
+            final local = controller.peer.localPathFor(entry.hash) != null;
+            final progress = controller.downloads[entry.hash];
+            return _PlaylistRow(
+              entry: entry,
+              selected: selected,
+              local: local,
+              progress: progress,
+              onPlay: () => _run(context, () => controller.playEntry(index)),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _PeersPanel extends StatelessWidget {
+  const _PeersPanel({required this.controller, super.key});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PanelTitle(icon: Icons.group_rounded, title: 'Peers conectados'),
+        const SizedBox(height: 10),
+        if (controller.snapshot.peers.isEmpty)
+          const _EmptyState(
+            icon: Icons.group_off_rounded,
+            text: 'Nenhum peer conectado.',
+          )
+        else
           ...controller.snapshot.peers.map(
             (peer) => ListTile(
               dense: true,
@@ -1135,24 +1286,88 @@ class _RightPanel extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18),
-          _PanelTitle(
-            key: eventsKey,
+      ],
+    );
+  }
+}
+
+class _EventsPanel extends StatelessWidget {
+  const _EventsPanel({required this.controller, super.key});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final logs = controller.logs.take(14).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _PanelTitle(icon: Icons.terminal_rounded, title: 'Eventos'),
+        const SizedBox(height: 10),
+        if (logs.isEmpty)
+          const _EmptyState(
             icon: Icons.terminal_rounded,
-            title: 'Eventos',
-          ),
-          const SizedBox(height: 10),
-          ...controller.logs
-              .take(14)
-              .map(
-                (log) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    log,
-                    style: TextStyle(color: context.textMuted, fontSize: 12),
-                  ),
-                ),
+            text: 'Sem eventos recentes.',
+          )
+        else
+          ...logs.map(
+            (log) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                log,
+                style: TextStyle(color: context.textMuted, fontSize: 12),
               ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MobilePageTitle extends StatelessWidget {
+  const _MobilePageTitle({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: context.primaryAccent),
+        const SizedBox(width: 8),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+        ),
+      ],
+    );
+  }
+}
+
+class _MobileThemePanel extends StatelessWidget {
+  const _MobileThemePanel({required this.controller});
+
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.cardBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Tema da interface',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          _ThemeMenu(controller: controller),
         ],
       ),
     );
@@ -1160,7 +1375,7 @@ class _RightPanel extends StatelessWidget {
 }
 
 class _PanelTitle extends StatelessWidget {
-  const _PanelTitle({required this.icon, required this.title, super.key});
+  const _PanelTitle({required this.icon, required this.title});
 
   final IconData icon;
   final String title;

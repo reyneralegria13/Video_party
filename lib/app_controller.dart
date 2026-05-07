@@ -14,7 +14,6 @@ enum AppVisualTheme { standard, light, system }
 class AppController extends ChangeNotifier {
   AppController() : peer = PeerNode(onLog: _pendingLog) {
     _pendingController = this;
-    _downloadDirectory = Directory(_defaultDownloadPath());
     _configurePeer();
   }
 
@@ -27,7 +26,6 @@ class AppController extends ChangeNotifier {
   final PeerNode peer;
   Player? _player;
   VideoController? videoController;
-  late final Directory _downloadDirectory;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
@@ -59,7 +57,9 @@ class AppController extends ChangeNotifier {
   bool get trackerRunning => tracker?.isRunning ?? false;
   bool get peerServing => peer.isServing;
   List<VideoItem> get library => peer.library;
-  String get downloadFolder => _downloadDirectory.path;
+  String get downloadFolder => folderPath.trim().isEmpty
+      ? 'Selecione a pasta de videos'
+      : folderPath.trim();
 
   Future<void> startTracker() async {
     tracker ??= TrackerServer(onLog: _log, onChanged: _syncLocalSnapshot);
@@ -80,7 +80,7 @@ class AppController extends ChangeNotifier {
       throw StateError('Informe a pasta com os videos.');
     }
     _log('Escaneando pasta local...');
-    await peer.scanFolder(folderPath.trim());
+    await peer.scanFolder(_sharedVideoDirectory().path);
     await register();
   }
 
@@ -234,11 +234,12 @@ class AppController extends ChangeNotifier {
       ),
       force: true,
     );
+    final outputDirectory = _sharedVideoDirectory();
     try {
       await peer.downloadFromPeers(
         peers: peers,
         video: video,
-        outputDirectory: _downloadDirectory,
+        outputDirectory: outputDirectory,
         maxParallelDownloads: reason == 'prefetch' ? 1 : null,
         onProgress: (progress) {
           _updateDownloadProgress(progress);
@@ -254,7 +255,7 @@ class AppController extends ChangeNotifier {
           trackerHost: trackerHost.trim(),
           trackerPort: trackerPort,
           video: video,
-          outputDirectory: _downloadDirectory,
+          outputDirectory: outputDirectory,
           onProgress: (progress) {
             _updateDownloadProgress(progress);
           },
@@ -279,6 +280,7 @@ class AppController extends ChangeNotifier {
     this.uploadPort = uploadPort ?? this.uploadPort;
     this.folderPath = folderPath ?? this.folderPath;
     _configurePeer();
+    notifyListeners();
   }
 
   void updateVisualTheme(AppVisualTheme value) {
@@ -319,7 +321,7 @@ class AppController extends ChangeNotifier {
           await peer.downloadFromPeers(
             peers: [candidate],
             video: video,
-            outputDirectory: _downloadDirectory,
+            outputDirectory: _sharedVideoDirectory(),
             onProgress: (progress) {
               _updateDownloadProgress(progress);
             },
@@ -333,14 +335,28 @@ class AppController extends ChangeNotifier {
   }
 
   void _configurePeer() {
+    final storageDirectory = folderPath.trim().isEmpty
+        ? null
+        : Directory(folderPath.trim());
     peer.configure(
-      storageDirectory: _downloadDirectory,
+      storageDirectory: storageDirectory,
       trackerHost: trackerHost.trim(),
       trackerPort: trackerPort,
       peerName: peerName.trim().isEmpty ? 'Peer sem nome' : peerName.trim(),
       advertisedHost: advertisedHost.trim(),
       advertisedPort: uploadPort,
     );
+  }
+
+  Directory _sharedVideoDirectory() {
+    final path = folderPath.trim();
+    if (path.isEmpty) {
+      throw StateError('Selecione a pasta de videos antes de baixar.');
+    }
+    if (path == '.' || path == './' || path == '.\\') {
+      throw StateError('Selecione uma pasta valida para os videos.');
+    }
+    return Directory(path);
   }
 
   void _updateDownloadProgress(
@@ -431,14 +447,6 @@ class AppController extends ChangeNotifier {
     });
     notifyListeners();
     return player;
-  }
-
-  static String _defaultDownloadPath() {
-    final home =
-        Platform.environment['USERPROFILE'] ??
-        Platform.environment['HOME'] ??
-        '.';
-    return '$home${Platform.pathSeparator}VideoPartyDownloads';
   }
 
   Future<void> _unregisterQuietly() async {
