@@ -268,6 +268,8 @@ Caso a conexão direta não seja possível, o cliente usa o relay do tracker:
 }
 \end{lstlisting}
 
+Para manter a lista de peers consistente, o tracker envia mensagens \texttt{HEARTBEAT} periodicamente. Cada peer responde com \texttt{HEARTBEAT\_ACK}; caso não responda dentro do tempo limite, o peer é removido do snapshot e deixa de ser anunciado como owner dos vídeos. Neste relatório, o termo \textit{heartbeat} refere-se ao mecanismo de verificação periódica de vida dos peers, usado para detectar quedas, evitar entradas obsoletas no catálogo e manter a lista de owners atualizada.
+
 \begin{figure}[H]
 	\centering
 	\resizebox{\textwidth}{!}{%
@@ -378,6 +380,10 @@ O resultado do trabalho é um aplicativo desktop funcional para Windows e Linux,
 		\texttt{DOWNLOAD} & Alias de busca por hash usado antes do download. \\
 		\hline
 		\texttt{ADD\_PLAYLIST} & Adiciona um vídeo registrado à playlist global. \\
+		\hline
+		\texttt{HEARTBEAT} & Verifica se o peer ainda está ativo (resposta \texttt{HEARTBEAT\_ACK}). \\
+		\hline
+		\texttt{HEARTBEAT\_ACK} & Confirmação do peer ao \texttt{HEARTBEAT} enviado pelo tracker. \\
 		\hline
 		\texttt{GET\_FILE} & Solicita a um peer um intervalo de bytes do arquivo. \\
 		\hline
